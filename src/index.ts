@@ -147,7 +147,8 @@ async function main(): Promise<void> {
 
   // Optional: route Ollama through an SSH tunnel to a self-hosted box.
   if (cfg.ssh.enabled) {
-    startSpinner(`opening SSH tunnel to ${cfg.ssh.host}`);
+    const sshTarget = cfg.ssh.mode === "gcloud" ? cfg.ssh.gcloud.instance : cfg.ssh.host;
+    startSpinner(`opening SSH tunnel to ${sshTarget}`);
     try {
       cfg.baseUrl = await openTunnel(cfg.ssh);
     } catch (e) {
@@ -181,6 +182,15 @@ async function main(): Promise<void> {
   const permissions = orExit(() => new Permissions([cwd, ...cfg.allowedPaths], cwd));
   const agent = new Agent(cfg, provider, permissions);
   banner(cfg.model, permissions.roots(), cfg.rag.enabled);
+
+  // Warn if the chosen model can't use tools — it will be chat-only.
+  const caps = await provider.capabilities(cfg.model);
+  if (caps && !caps.has("tools")) {
+    printInfo(
+      c.yellow(`  note: ${cfg.model} has no tool-calling capability — `) +
+        c.yellow("file tools and RAG are disabled; chat only.\n"),
+    );
+  }
 
   process.on("SIGINT", () => {
     console.log(c.dim("\nbye."));

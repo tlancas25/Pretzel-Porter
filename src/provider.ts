@@ -16,6 +16,9 @@ import type {
  * same two methods and select it via `config.provider`.
  */
 export class OllamaProvider implements Provider {
+  /** Per-model capability cache (null = could not be determined). */
+  private readonly capsCache = new Map<string, Set<string> | null>();
+
   constructor(private readonly cfg: AgentConfig) {}
 
   private async fetchTags(): Promise<{ name?: string; model?: string }[]> {
@@ -46,12 +49,44 @@ export class OllamaProvider implements Provider {
     return [...seen].sort();
   }
 
+  /**
+   * Capabilities of a model (e.g. "tools", "thinking"), via /api/show.
+   * Cached per model. Returns null if the capabilities can't be determined,
+   * so callers can fall back to optimistic behaviour.
+   */
+  async capabilities(model: string): Promise<Set<string> | null> {
+    const cached = this.capsCache.get(model);
+    if (cached !== undefined) return cached;
+    let caps: Set<string> | null = null;
+    try {
+      const res = await fetch(`${this.cfg.baseUrl}/api/show`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model }),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as { capabilities?: string[] };
+        if (Array.isArray(data.capabilities)) caps = new Set(data.capabilities);
+      }
+    } catch {
+      // leave caps null — treat as "unknown"
+    }
+    this.capsCache.set(model, caps);
+    return caps;
+  }
+
   async chat(messages: Message[], tools: ToolSchema[]): Promise<ChatResponse> {
+    // Only ask for thinking / tools if the model actually supports them —
+    // otherwise Ollama returns HTTP 400. Unknown capabilities → optimistic.
+    const caps = await this.capabilities(this.cfg.model);
+    const useThink = this.cfg.think && (caps === null || caps.has("thinking"));
+    const useTools = caps === null || caps.has("tools");
+
     const body = {
       model: this.cfg.model,
       messages: messages.map(toOllamaMessage),
-      tools: tools.map((t) => ({ type: "function", function: t })),
-      think: this.cfg.think,
+      tools: useTools ? tools.map((t) => ({ type: "function", function: t })) : [],
+      think: useThink,
       stream: false,
       options: {
         temperature: this.cfg.temperature,

@@ -138,4 +138,6 @@ export interface Provider {
   healthCheck(): Promise<void>;
   /** Names of models available on the backend. */
   listModels(): Promise<string[]>;
+  /** Capabilities of a model (e.g. "tools", "thinking"); null if unknown. */
+  capabilities(model: string): Promise<Set<string> | null>;
 }
