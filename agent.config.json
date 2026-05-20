@@ -3,7 +3,7 @@
   "baseUrl": "http://localhost:11434",
   "model": "huihui_ai/gemma-4-abliterated:e4b",
   "temperature": 0.4,
-  "numCtx": 131072,
+  "numCtx": 16384,
   "think": true,
   "maxSteps": 25,
   "shellTimeoutMs": 30000,

@@ -142,9 +142,10 @@ a preemptible VM's changing external IP does not matter, and manages keys:
 }
 ```
 
-On startup Pretzel Porter opens the tunnel, waits for it, and routes all
-Ollama traffic through it — the remote LLM port is never exposed publicly.
-The tunnel closes on exit.
+With `enabled: true`, Pretzel Porter shows a **backend picker** at startup —
+choose **Local** or **Cloud**. Picking Cloud opens the SSH tunnel and routes
+Ollama through it; the remote port is never exposed publicly. The tunnel
+closes on exit. (`enabled: false` skips the picker — local only.)
 
 ## Commands
 

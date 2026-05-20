@@ -145,20 +145,28 @@ async function main(): Promise<void> {
 
   await ensureTrusted(cwd);
 
-  // Optional: route Ollama through an SSH tunnel to a self-hosted box.
+  // Choose the backend: local Ollama, or the SSH-tunnelled remote one.
+  // The picker only appears when an SSH target is configured (ssh.enabled).
   if (cfg.ssh.enabled) {
     const sshTarget = cfg.ssh.mode === "gcloud" ? cfg.ssh.gcloud.instance : cfg.ssh.host;
-    startSpinner(`opening SSH tunnel to ${sshTarget}`);
-    try {
-      cfg.baseUrl = await openTunnel(cfg.ssh);
-    } catch (e) {
+    const choice = await selectFromMenu(
+      "Which Ollama backend?",
+      ["Local  (this machine)", `Cloud  (${sshTarget} via SSH)`],
+      0,
+    );
+    if (choice === 1) {
+      startSpinner(`opening SSH tunnel to ${sshTarget}`);
+      try {
+        cfg.baseUrl = await openTunnel(cfg.ssh);
+      } catch (e) {
+        stopSpinner();
+        printError((e as Error).message);
+        cleanup();
+        process.exit(1);
+      }
       stopSpinner();
-      printError((e as Error).message);
-      cleanup();
-      process.exit(1);
+      printInfo(`  ssh tunnel up — Ollama via ${cfg.baseUrl}\n`);
     }
-    stopSpinner();
-    printInfo(`  ssh tunnel up — Ollama via ${cfg.baseUrl}\n`);
   }
 
   const provider = new OllamaProvider(cfg);
