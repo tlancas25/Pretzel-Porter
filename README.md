@@ -28,15 +28,17 @@ runs without stopping to ask.
 ## Requirements
 
 - **Node.js 20+**
-- **[Ollama](https://ollama.com)** running locally with a tool-capable model.
-  This project is configured for:
+- **[Ollama](https://ollama.com)** with a tool-capable model. The local
+  backup model this project is configured for:
 
   ```
-  ollama pull huihui_ai/gemma-4-abliterated:e4b
+  ollama pull huihui_ai/gemma-4-abliterated:e2b
   ```
 
   Any Ollama model with the `tools` and `thinking` capabilities will work —
-  just change `model` in the config.
+  just change `model` in the config. The day-to-day backend is a self-hosted
+  cloud Ollama reached over SSH (see [Remote LLM over SSH](#remote-llm-over-ssh));
+  the local `e2b` model is the offline backup.
 
 ## Install
 

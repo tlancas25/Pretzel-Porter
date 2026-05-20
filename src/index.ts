@@ -300,10 +300,12 @@ async function main(): Promise<void> {
   let backendLabel = "local";
   if (cfg.ssh.enabled) {
     const sshTarget = cfg.ssh.mode === "gcloud" ? cfg.ssh.gcloud.instance : cfg.ssh.host;
+    // Cloud is the daily driver; local is the backup. The picker still always
+    // shows — the operator picks per session — but Cloud is pre-selected.
     const choice = await selectFromMenu(
       "Which Ollama backend?",
-      ["Local  (this machine)", `Cloud  (${sshTarget} via SSH)`],
-      0,
+      ["Local  (this machine — backup)", `Cloud  (${sshTarget} via SSH)`],
+      1,
     );
     if (choice === 1) {
       startSpinner(`opening SSH tunnel to ${sshTarget}`);

@@ -13,7 +13,7 @@ export const USER_DIR = join(homedir(), ".pretzel-porter");
 const DEFAULTS: AgentConfig = {
   provider: "ollama",
   baseUrl: "http://localhost:11434",
-  model: "huihui_ai/gemma-4-abliterated:e4b",
+  model: "huihui_ai/gemma-4-abliterated:e2b",
   plannerModel: "",
   autoCommit: false,
   temperature: 0.4,

@@ -1,7 +1,7 @@
 {
   "provider": "ollama",
   "baseUrl": "http://localhost:11434",
-  "model": "huihui_ai/gemma-4-abliterated:e4b",
+  "model": "huihui_ai/gemma-4-abliterated:e2b",
   "plannerModel": "",
   "temperature": 0.4,
   "numCtx": 16384,
