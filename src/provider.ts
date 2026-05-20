@@ -267,7 +267,9 @@ function toOllamaMessage(m: Message): Record<string, unknown> {
       })),
     };
   }
-  return { role: m.role, content: m.content };
+  const out: Record<string, unknown> = { role: m.role, content: m.content };
+  if (m.images?.length) out.images = m.images; // base64 images for a vision model
+  return out;
 }
 
 /** Ollama usually returns an object; some builds return a JSON string. */

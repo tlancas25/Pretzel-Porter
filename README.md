@@ -14,7 +14,7 @@
 **Pretzel Porter** — a small, **fully local** terminal agent — like Claude
 Code, but it runs on any local LLM you have in Ollama and never sends anything
 off your machine. Built for working with sensitive files (portfolio, finances,
-personal docs) where privacy is the whole point. _v1.1.0_
+personal docs) where privacy is the whole point. _v1.2.0_
 
 It can **think**, **reason**, and **use tools** to read, search, edit, write,
 and run shell commands — all confined to a directory sandbox you control. With
@@ -77,6 +77,10 @@ defaults and is gitignored.
 | `temperature`  | Lower = more reliable tool use. `0.4` is a good default. |
 | `numCtx`       | Context window in tokens to request from Ollama. |
 | `think`        | Enable the model's native reasoning trace. |
+| `hideThinking` | Hide the reasoning trace from the display (it still runs). |
+| `theme`        | `default`, or `plain` for no colour. |
+| `auditLog`     | Append every write/shell action to `~/.pretzel-porter/audit.log`. |
+| `permissionRules` | Wildcard allow/ask/deny rules — see [Permission rules](#permission-rules). |
 | `allowedPaths` | **The sandbox.** List of directories the agent may touch. Relative paths resolve from the project root. |
 | `readOnlyPaths`| Reference directories the agent may **read** but never modify. |
 | `autoApprove`  | Per-risk-tier auto-approval: `read` / `write` / `shell`. |
@@ -180,6 +184,12 @@ Inside the REPL:
 | `/diff` | show the git working-tree diff |
 | `/commit [msg]` | commit changes (the model writes the message if omitted) |
 | `/jobs` | list background jobs (`/jobs <id>` for its output) |
+| `/resume [id]` | resume a saved session (interactive picker if no id) |
+| `/sessions` | list saved sessions |
+| `/rules` | list permission rules (`/rules clear` resets learned) |
+| `/airgap` | toggle air-gap mode — disable all network tools |
+| `/doctor` | run diagnostics (Ollama, model, RAG, git) |
+| `/status` | show the current session status |
 | `/init` | create a starter `PRETZEL.md` project-memory file |
 | `/reload` | reload `PRETZEL.md` into context |
 | `/reset` | clear the conversation history |
@@ -287,6 +297,34 @@ the context window:
 air-gapped — `web_fetch` and `web_search`. Plus any tools exposed by configured
 MCP servers.
 
+## Sessions & safety
+
+- **Sessions** — every conversation is saved to `~/.pretzel-porter/sessions/`
+  after each turn. `/sessions` lists them; `/resume` (with an id, or an
+  interactive picker) reloads one. Plain JSON, fully offline.
+- **Permission rules** — wildcard allow/ask/deny rules evaluated before the
+  coarse `autoApprove` tiers. Configure them, or let them be *learned*: answer
+  `a` (always) at a confirm prompt and a rule is recorded to
+  `~/.pretzel-porter/rules.json` so that tool stops asking. `/rules` inspects
+  them, `/rules clear` resets the learned ones.
+
+  ```json
+  "permissionRules": [
+    { "tool": "run_shell", "pattern": "run: git *", "action": "allow" },
+    { "tool": "run_shell", "pattern": "run: rm *",  "action": "deny" }
+  ]
+  ```
+
+  The `pattern` is a glob tested against the call summary; `action` is
+  `allow`, `ask`, or `deny`.
+- **Audit log** — set `auditLog: true` to append every write/shell action to
+  `~/.pretzel-porter/audit.log` as timestamped JSON.
+- **Image input** — mention an image file inline (`@chart.png`) and, on a
+  vision-capable model like Gemma, it is attached to the turn for the model to
+  read.
+- **Diagnostics** — `/doctor` checks Ollama, the model, the RAG CLI, and git;
+  `/status` summarises the session.
+
 ## Architecture
 
 ```
@@ -310,6 +348,10 @@ src/
   planmode.ts     the read-only plan-mode toggle
   git.ts          git helpers for /diff, /commit, auto-commit
   jobs.ts         background-job manager
+  airgap.ts       the air-gap mode toggle
+  audit.ts        append-only audit log
+  session.ts      JSON session persistence + /resume
+  rules.ts        wildcard permission-rule engine
   state.ts        persistent trust list + last model (~/.pretzel-porter)
   ssh.ts          SSH tunnel manager for a remote Ollama
   ui.ts           terminal rendering, streaming, prompts, history, completion
@@ -326,9 +368,18 @@ other code changes.
 
 ## Status
 
-v1.1.0 — streamed responses, cancellable generation, conversation compaction
-with a context meter, coloured diff previews, `/undo` + `/redo`, persistent
-prompt history with Tab completion, multi-line input, and a Shift-Tab
-autonomous mode. Builds on v1.0.0's file tools, RAG search, native thinking,
-sandbox + confirmations. Planned next: project memory (`PRETZEL.md`), `@file`
-mentions, a repo map, and a cloud `vllm` provider.
+v1.2.0 — the full enhancement roadmap is implemented:
+
+- **Reliability & UX** — streamed responses, cancellable generation,
+  compaction + context meter, diff previews, `/undo` + `/redo`, rich input.
+- **Context intelligence** — `PRETZEL.md` project memory, `@file` mentions,
+  pinned files, a dependency-free repo map, persistent long-term memory.
+- **Extensibility** — an MCP client, custom slash commands, lifecycle hooks,
+  and the extra tools (`multi_edit`, `apply_patch`, `web_fetch`, …).
+- **Agentic power** — plan mode, a planner/executor model split, sub-agents,
+  git integration, background jobs.
+- **Sessions & safety** — JSON session persistence with `/resume`, a learned
+  permission-rule engine, air-gap mode, an audit log, image input,
+  diagnostics, and themes.
+
+The project remains Node + TypeScript with zero runtime dependencies.

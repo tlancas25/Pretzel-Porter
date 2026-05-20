@@ -1,5 +1,6 @@
 import type { Tool } from "../types.js";
 import { reqString, clamp } from "./util.js";
+import { airgap } from "../airgap.js";
 
 // web_fetch and web_search are the only network-capable tools. They are
 // registered only when airgap is off, so an air-gapped session is guaranteed
@@ -40,6 +41,9 @@ export const webFetchTool: Tool = {
   },
   summarize: (args) => `fetch ${args.url}`,
   async run(args) {
+    if (airgap.enabled) {
+      return { ok: false, output: "Air-gap mode is on — web_fetch is disabled." };
+    }
     const url = reqString(args, "url");
     if (!/^https?:\/\//i.test(url)) {
       return { ok: false, output: "url must start with http:// or https://" };

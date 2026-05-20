@@ -2,13 +2,19 @@
   "provider": "ollama",
   "baseUrl": "http://localhost:11434",
   "model": "huihui_ai/gemma-4-abliterated:e4b",
+  "plannerModel": "",
   "temperature": 0.4,
   "numCtx": 16384,
   "think": true,
+  "hideThinking": false,
   "maxSteps": 25,
   "shellTimeoutMs": 30000,
   "maxReadBytes": 200000,
   "requestTimeoutMs": 300000,
+  "theme": "default",
+  "autoCommit": false,
+  "airgap": false,
+  "auditLog": false,
 
   "allowedPaths": [],
   "readOnlyPaths": [],
@@ -18,6 +24,12 @@
     "write": false,
     "shell": false
   },
+
+  "permissionRules": [],
+
+  "mcpServers": {},
+
+  "hooks": {},
 
   "rag": {
     "enabled": true,

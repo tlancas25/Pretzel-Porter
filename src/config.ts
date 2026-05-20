@@ -26,7 +26,11 @@ const DEFAULTS: AgentConfig = {
   allowedPaths: [],
   readOnlyPaths: [],
   autoApprove: { read: true, write: false, shell: false },
+  permissionRules: [],
   airgap: false,
+  auditLog: false,
+  theme: "default",
+  hideThinking: false,
   mcpServers: {},
   hooks: {},
   rag: { enabled: true, command: "rag", defaultK: 5 },
@@ -105,6 +109,10 @@ export function loadConfig(): AgentConfig {
   if (!Array.isArray(cfg.allowedPaths)) fail("allowedPaths must be an array");
   if (!Array.isArray(cfg.readOnlyPaths)) fail("readOnlyPaths must be an array");
   if (typeof cfg.airgap !== "boolean") fail("airgap must be true/false");
+  if (typeof cfg.auditLog !== "boolean") fail("auditLog must be true/false");
+  if (typeof cfg.hideThinking !== "boolean") fail("hideThinking must be true/false");
+  if (typeof cfg.theme !== "string") fail("theme must be a string");
+  if (!Array.isArray(cfg.permissionRules)) fail("permissionRules must be an array");
   if (typeof cfg.mcpServers !== "object" || cfg.mcpServers === null) {
     fail("mcpServers must be an object");
   }

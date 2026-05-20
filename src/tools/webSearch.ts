@@ -1,6 +1,7 @@
 import type { Tool } from "../types.js";
 import { reqString, optNumber, clamp } from "./util.js";
 import { htmlToText } from "./webFetch.js";
+import { airgap } from "../airgap.js";
 
 /** Pull result titles and URLs out of a DuckDuckGo HTML results page. */
 function parseResults(html: string, max: number): string[] {
@@ -37,6 +38,9 @@ export const webSearchTool: Tool = {
   },
   summarize: (args) => `web search: ${args.query}`,
   async run(args) {
+    if (airgap.enabled) {
+      return { ok: false, output: "Air-gap mode is on — web_search is disabled." };
+    }
     const query = reqString(args, "query");
     const max = Math.max(1, Math.min(15, Math.round(optNumber(args, "max_results", 6))));
     let res: Response;

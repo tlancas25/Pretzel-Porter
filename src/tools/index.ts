@@ -24,9 +24,8 @@ export interface ToolRegistry {
 
 /**
  * Assemble the tool set for a config. `search_docs` is included only when RAG
- * is enabled, the web tools only when air-gap mode is off, and `extraTools`
- * (e.g. tools from MCP servers) are appended last — so the model never sees a
- * tool it cannot use.
+ * is enabled; `extraTools` (e.g. tools from MCP servers) are appended last.
+ * The web tools are always registered but refuse while air-gap mode is on.
  */
 export function buildToolRegistry(cfg: AgentConfig, extraTools: Tool[] = []): ToolRegistry {
   const tools: Tool[] = [
@@ -41,7 +40,9 @@ export function buildToolRegistry(cfg: AgentConfig, extraTools: Tool[] = []): To
     jobStatusTool,
   ];
   if (cfg.rag.enabled) tools.push(searchDocsTool);
-  if (!cfg.airgap) tools.push(webFetchTool, webSearchTool);
+  // Web tools stay registered; they refuse at run time while air-gap is on,
+  // so the mode can be toggled live without rebuilding the registry.
+  tools.push(webFetchTool, webSearchTool);
   tools.push(
     editFileTool,
     multiEditTool,

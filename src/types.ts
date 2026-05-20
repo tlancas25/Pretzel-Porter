@@ -18,6 +18,8 @@ export interface Message {
   tool_calls?: ToolCall[];
   /** Present on `role: "tool"` turns — which tool produced this result. */
   tool_name?: string;
+  /** Base64-encoded images attached to a user turn, for a vision model. */
+  images?: string[];
 }
 
 export interface ToolSchema {
@@ -105,14 +107,32 @@ export interface AgentConfig {
   /** Paths the agent may read but never modify (docs, configs). */
   readOnlyPaths: string[];
   autoApprove: Record<Risk, boolean>;
+  /** Wildcard allow/ask/deny rules, evaluated before the autoApprove tiers. */
+  permissionRules: PermissionRuleConfig[];
   /** When true, every network-capable tool is disabled — a hard offline guarantee. */
   airgap: boolean;
+  /** When true, every write/shell tool action is appended to an audit log. */
+  auditLog: boolean;
+  /** Accent colour theme: "default" or "plain" (no colour). */
+  theme: string;
+  /** When true, the model's reasoning trace is not displayed. */
+  hideThinking: boolean;
   rag: RagConfig;
   ssh: SshConfig;
   /** MCP servers to connect to at startup; their tools join the registry. */
   mcpServers: Record<string, McpServerConfig>;
   /** Lifecycle hooks — shell commands run at defined points. */
   hooks: Partial<Record<HookEvent, HookSpec[]>>;
+}
+
+/** A configured permission rule — see src/rules.ts. */
+export interface PermissionRuleConfig {
+  /** Tool name the rule applies to. */
+  tool: string;
+  /** Glob tested against the call summary; omitted = matches every call. */
+  pattern?: string;
+  /** What to do on a match. */
+  action: "allow" | "ask" | "deny";
 }
 
 /** A Model Context Protocol server launched over stdio. */

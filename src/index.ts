@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { realpathSync, readdirSync, statSync } from "node:fs";
+import { execFile } from "node:child_process";
 import { homedir } from "node:os";
 import { resolve, isAbsolute } from "node:path";
 import { loadConfig } from "./config.js";
@@ -15,9 +16,6 @@ import { allNotes, forget } from "./memory.js";
 import { renderTodos } from "./todos.js";
 import { loadCustomCommands, expandCommand } from "./commands.js";
 import { connectMcpServers, type McpClient } from "./mcp.js";
-import { planMode } from "./planmode.js";
-import { gitDiff } from "./git.js";
-import { listJobs, getJob, killAllJobs } from "./jobs.js";
 import {
   ask,
   banner,
@@ -30,9 +28,16 @@ import {
   printInfo,
   selectFromMenu,
   setCompleter,
+  setTheme,
   startSpinner,
   stopSpinner,
 } from "./ui.js";
+import { planMode } from "./planmode.js";
+import { gitDiff, isGitRepo } from "./git.js";
+import { listJobs, getJob, killAllJobs } from "./jobs.js";
+import { airgap } from "./airgap.js";
+import { setAudit, AUDIT_FILE } from "./audit.js";
+import { newSessionId, saveSession, loadSession, listSessions } from "./session.js";
 import type { AgentConfig, Provider } from "./types.js";
 
 const HELP = `
@@ -55,6 +60,12 @@ ${c.bold("commands")}
   /diff           show the git working-tree diff
   /commit [msg]   commit changes (model writes the message if omitted)
   /jobs           list background jobs ( /jobs <id> for output )
+  /resume [id]    resume a saved session ( interactive picker if no id )
+  /sessions       list saved sessions
+  /rules          list permission rules ( /rules clear  resets learned )
+  /airgap         toggle air-gap mode — disable all network tools
+  /doctor         run diagnostics (Ollama, model, RAG, git)
+  /status         show the current session status
   /init           create a starter PRETZEL.md project-memory file
   /reload         reload PRETZEL.md into context
   /reset          clear the conversation history
@@ -90,6 +101,12 @@ const COMMANDS = [
   "/diff",
   "/commit",
   "/jobs",
+  "/resume",
+  "/sessions",
+  "/rules",
+  "/airgap",
+  "/doctor",
+  "/status",
   "/init",
   "/reload",
   "/reset",
@@ -262,8 +279,18 @@ async function readUserInput(): Promise<string> {
   }
 }
 
+/** Whether an executable is on the PATH (for /doctor). */
+function commandExists(cmd: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    execFile("which", [cmd], (err) => resolve(!err));
+  });
+}
+
 async function main(): Promise<void> {
   const cfg = orExit(loadConfig);
+  setTheme(cfg.theme);
+  airgap.set(cfg.airgap);
+  setAudit(cfg.auditLog);
   const cwd = realpathSync(process.cwd());
 
   await ensureTrusted(cwd);
@@ -333,6 +360,7 @@ async function main(): Promise<void> {
 
   const agent = new Agent(cfg, provider, permissions, mcpTools);
   const customCommands = loadCustomCommands();
+  let sessionId = newSessionId();
   banner(cfg.model, permissions.roots(), cfg.rag.enabled);
 
   // Warn if the chosen model can't use tools — it will be chat-only.
@@ -394,6 +422,7 @@ async function main(): Promise<void> {
       sep +
       c.dim(tildeify(cwd));
     if (planMode.active) line += sep + c.blue("plan mode");
+    if (airgap.enabled) line += sep + c.green("air-gapped");
     if (autonomy.enabled) line += sep + c.yellow("⚡ autonomous");
     return line;
   };
@@ -525,8 +554,110 @@ async function main(): Promise<void> {
               : "no background jobs.") + "\n",
           );
         }
+      } else if (cmd === "airgap") {
+        const on = airgap.toggle();
+        printInfo(
+          (on
+            ? "air-gap mode ON — web_fetch and web_search are disabled."
+            : "air-gap mode OFF — network tools are enabled.") + "\n",
+        );
+      } else if (cmd === "rules") {
+        if (arg.toLowerCase() === "clear") {
+          printInfo(`cleared ${agent.rules.clearLearned()} learned rule(s).\n`);
+        } else {
+          const { configured, learned } = agent.rules.list();
+          const fmt = (r: { action: string; tool: string; pattern?: string }): string =>
+            `  ${r.action.padEnd(5)} ${r.tool}${r.pattern ? "  ·  " + r.pattern : ""}`;
+          let txt = "permission rules:";
+          txt += "\n configured:\n" + (configured.length ? configured.map(fmt).join("\n") : "  (none)");
+          txt += "\n learned:\n" + (learned.length ? learned.map(fmt).join("\n") : "  (none)");
+          printInfo(txt + "\n");
+        }
+      } else if (cmd === "sessions") {
+        const sessions = listSessions();
+        printInfo(
+          (sessions.length
+            ? "saved sessions:\n" +
+              sessions
+                .map((s) => `  ${s.id}  (${s.turns} turn${s.turns === 1 ? "" : "s"})  ${s.preview}`)
+                .join("\n")
+            : "no saved sessions yet.") + "\n",
+        );
+      } else if (cmd === "resume") {
+        const sessions = listSessions();
+        if (sessions.length === 0) {
+          printError("no saved sessions to resume.");
+        } else {
+          let pick = arg
+            ? sessions.find((s) => s.id === arg || s.id.startsWith(arg))
+            : undefined;
+          if (!arg) {
+            const idx = await selectFromMenu(
+              "Resume which session?",
+              sessions.map((s) => `${s.id}  ${s.preview}`),
+              0,
+            );
+            pick = sessions[idx];
+          }
+          const loaded = pick ? loadSession(pick.id) : null;
+          if (!loaded) {
+            printError(arg ? `no session matching "${arg}".` : "could not load that session.");
+          } else {
+            agent.importMessages(loaded.messages);
+            sessionId = loaded.id;
+            printInfo(`resumed session ${loaded.id} (${loaded.turns} turns).\n`);
+          }
+        }
+      } else if (cmd === "doctor") {
+        const lines: string[] = ["diagnostics:"];
+        try {
+          await provider.healthCheck();
+          lines.push(`  ${c.green("✓")} Ollama reachable (${cfg.baseUrl})`);
+        } catch (e) {
+          lines.push(`  ${c.red("✗")} Ollama: ${(e as Error).message}`);
+        }
+        try {
+          const models = await provider.listModels();
+          const has = models.includes(cfg.model);
+          lines.push(
+            `  ${has ? c.green("✓") : c.yellow("?")} model ${cfg.model}${has ? "" : " (not installed)"}`,
+          );
+        } catch {
+          lines.push(`  ${c.yellow("?")} could not list models`);
+        }
+        if (cfg.rag.enabled) {
+          const ok = await commandExists(cfg.rag.command);
+          lines.push(
+            `  ${ok ? c.green("✓") : c.yellow("?")} RAG CLI "${cfg.rag.command}"${ok ? "" : " not on PATH"}`,
+          );
+        }
+        lines.push(
+          `  ${(await isGitRepo(cwd)) ? c.green("✓") + " git repository" : c.dim("– not a git repository")}`,
+        );
+        lines.push(`  ${c.dim("MCP tools:")} ${mcpTools.length}`);
+        printInfo(lines.join("\n") + "\n");
+      } else if (cmd === "status") {
+        const usage = agent.contextUsage();
+        const modes = [
+          planMode.active ? "plan" : null,
+          autonomy.enabled ? "autonomous" : null,
+          airgap.enabled ? "air-gapped" : null,
+        ].filter(Boolean);
+        printInfo(
+          [
+            "status:",
+            `  model      ${cfg.model}${cfg.plannerModel ? ` (planner: ${cfg.plannerModel})` : ""}`,
+            `  backend    ${backendLabel}`,
+            `  context    ${usage.tokens} / ${cfg.numCtx} tokens (${Math.round(usage.pct * 100)}%)`,
+            `  session    ${sessionId}`,
+            `  modes      ${modes.length ? modes.join(", ") : "normal"}`,
+            `  audit log  ${cfg.auditLog ? AUDIT_FILE : "off"}`,
+            `  sandbox    ${permissions.roots().join(", ")}`,
+          ].join("\n") + "\n",
+        );
       } else if (customCommands.has(cmd)) {
         await agent.run(expandCommand(customCommands.get(cmd)!, arg));
+        saveSession(sessionId, agent.exportMessages());
       } else {
         printError(`unknown command "${input}". Try /help.`);
       }
@@ -534,6 +665,7 @@ async function main(): Promise<void> {
     }
 
     await agent.run(input);
+    saveSession(sessionId, agent.exportMessages());
   }
 
   console.log(c.dim("bye."));

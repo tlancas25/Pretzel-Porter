@@ -8,6 +8,7 @@ import type {
   ToolContext,
   ToolResult,
 } from "./types.js";
+import { readFileSync } from "node:fs";
 import type { Permissions } from "./permissions.js";
 import { buildToolRegistry, type ToolRegistry } from "./tools/index.js";
 import { autonomy } from "./autonomy.js";
@@ -17,9 +18,11 @@ import { FileContext } from "./context.js";
 import { loadProjectMemory } from "./projectMemory.js";
 import { runHooks } from "./hooks.js";
 import { isGitRepo, gitDiff, gitCommitAll } from "./git.js";
+import { PermissionRules } from "./rules.js";
+import { audit } from "./audit.js";
 import {
   c,
-  confirm,
+  confirmToolUse,
   createStreamRenderer,
   printDiff,
   printError,
@@ -29,6 +32,9 @@ import {
   startSpinner,
   stopSpinner,
 } from "./ui.js";
+
+/** Image file extensions attached to a turn as input for a vision model. */
+const IMAGE_RE = /\.(png|jpe?g|gif|webp|bmp)$/i;
 
 function systemPrompt(
   roots: string[],
@@ -105,6 +111,8 @@ export class Agent {
   readonly undo = new UndoStore();
   /** Files and directories pinned into every turn (+ @mention expansion). */
   readonly fileContext: FileContext;
+  /** Wildcard allow/ask/deny permission rules. */
+  readonly rules: PermissionRules;
 
   private controller: AbortController | null = null;
   private _running = false;
@@ -133,7 +141,36 @@ export class Agent {
       subagent: isSubagent ? undefined : (prompt) => this.spawnSubagent(prompt),
     };
     this.fileContext = new FileContext(permissions);
+    this.rules = new PermissionRules(cfg.permissionRules);
     this.messages = [{ role: "system", content: this.buildSystemPrompt() }];
+  }
+
+  /** Export the conversation for session persistence. */
+  exportMessages(): Message[] {
+    return [...this.messages];
+  }
+
+  /** Replace the conversation with a saved one (used by /resume). */
+  importMessages(messages: Message[]): void {
+    if (messages.length === 0) return;
+    this.messages.length = 0;
+    this.messages.push(...messages);
+  }
+
+  /** Collect base64 images from @path mentions of image files. */
+  private collectImages(input: string): string[] {
+    const images: string[] = [];
+    const re = /(?:^|\s)@([^\s]+)/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(input)) !== null) {
+      if (!IMAGE_RE.test(m[1]!)) continue;
+      try {
+        images.push(readFileSync(this.permissions.resolveWithin(m[1]!)).toString("base64"));
+      } catch {
+        // unreadable or out of sandbox — skip
+      }
+    }
+    return images;
   }
 
   /** Run a prompt in a fresh sub-agent and return its final answer. */
@@ -268,7 +305,12 @@ export class Agent {
     // Pinned files and @mentions are attached ahead of the request itself.
     const attached = this.fileContext.build(userInput);
     const content = attached ? `${attached}\n\n[User request]\n${request}` : request;
-    this.messages.push({ role: "user", content });
+    const images = this.collectImages(userInput);
+    this.messages.push({
+      role: "user",
+      content,
+      images: images.length ? images : undefined,
+    });
     this.lastAnswer = "";
     this.controller = new AbortController();
     this._running = true;
@@ -304,7 +346,7 @@ export class Agent {
           stopSpinner();
           sawDelta = true;
         }
-        if (d.thinking) render.thinking(d.thinking);
+        if (d.thinking && !this.cfg.hideThinking) render.thinking(d.thinking);
         if (d.content) render.content(d.content);
       };
 
@@ -410,19 +452,42 @@ export class Agent {
       }
     }
 
-    const needsConfirm =
-      tool.risk !== "read" && !this.cfg.autoApprove[tool.risk] && !autonomy.enabled;
-    if (needsConfirm) {
-      const approved = await confirm(`  ${c.yellow("approve this " + tool.risk + " action?")}`);
-      if (!approved) {
-        printToolResult(false, "declined by user");
+    if (tool.risk !== "read") {
+      // Permission rules are evaluated first; then autonomy / autoApprove;
+      // a learned "always" rule is recorded when the operator chooses it.
+      const ruleAction = this.rules.evaluate(call.name, summary);
+      if (ruleAction === "deny") {
+        printToolResult(false, "denied by a permission rule");
         return {
           ok: false,
-          output: "The user declined to run this tool call. Do not retry it; ask how to proceed.",
+          output: "A permission rule denies this tool call. Do not retry it; ask how to proceed.",
         };
       }
-    } else if (tool.risk !== "read" && autonomy.enabled) {
-      printInfo(`  ${c.yellow("⚡ autonomous")} — ${tool.risk} action auto-approved`);
+      const autoOk =
+        autonomy.enabled ||
+        ruleAction === "allow" ||
+        (ruleAction !== "ask" && this.cfg.autoApprove[tool.risk]);
+      if (autoOk) {
+        if (autonomy.enabled && ruleAction !== "allow") {
+          printInfo(`  ${c.yellow("⚡ autonomous")} — ${tool.risk} action auto-approved`);
+        }
+      } else {
+        const decision = await confirmToolUse(
+          `  ${c.yellow("approve this " + tool.risk + " action?")}`,
+        );
+        if (decision === "no") {
+          printToolResult(false, "declined by user");
+          return {
+            ok: false,
+            output:
+              "The user declined to run this tool call. Do not retry it; ask how to proceed.",
+          };
+        }
+        if (decision === "always") {
+          this.rules.remember({ tool: call.name, action: "allow" });
+          printInfo(c.dim(`  rule added — ${call.name} is now auto-approved`));
+        }
+      }
     }
 
     // Snapshot the affected file so the action can be reverted with /undo.
@@ -456,6 +521,8 @@ export class Agent {
         ),
       );
     }
+
+    if (tool.risk !== "read") audit({ tool: call.name, summary, ok: result.ok });
 
     const postHook = await runHooks(
       "PostToolUse",
