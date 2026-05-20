@@ -23,6 +23,7 @@ import {
   closeRl,
   confirm,
   EOF,
+  onEscape,
   onShiftTab,
   printError,
   printInfo,
@@ -74,6 +75,7 @@ ${c.bold("commands")}
 
 ${c.bold("keys")}
   Shift-Tab       toggle autonomous mode (auto-approve every action)
+  Esc             stop the current response (e.g. mid-thinking)
   Ctrl-C          cancel the current response — or quit at an empty prompt
   Tab             complete a command or file path
   trailing \\      continue input on the next line
@@ -395,6 +397,11 @@ async function main(): Promise<void> {
           : c.green("✓ autonomous mode OFF — confirmations restored")) +
         "\n",
     );
+  });
+
+  // Escape cancels an in-flight response (handy mid-"thinking"); a no-op when idle.
+  onEscape(() => {
+    if (agent.running) agent.cancel();
   });
 
   // Ctrl-C cancels an in-flight response; at an idle prompt it quits.
