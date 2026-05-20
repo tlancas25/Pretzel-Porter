@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import type { Tool } from "../types.js";
 import { reqString, optBool } from "./util.js";
+import { formatDiff } from "../diff.js";
 
 export const editFileTool: Tool = {
   risk: "write",
@@ -25,6 +26,36 @@ export const editFileTool: Tool = {
     },
   },
   summarize: (args) => `edit ${args.path}`,
+  affectedPath(args, ctx) {
+    try {
+      return ctx.permissions.resolveWithin(reqString(args, "path"));
+    } catch {
+      return null;
+    }
+  },
+  async preview(args, ctx) {
+    let path: string;
+    try {
+      path = ctx.permissions.resolveWithin(reqString(args, "path"));
+    } catch {
+      return null;
+    }
+    const oldStr = typeof args.old_string === "string" ? args.old_string : "";
+    const newStr = typeof args.new_string === "string" ? args.new_string : "";
+    if (!oldStr) return null;
+    let text: string;
+    try {
+      text = readFileSync(path, "utf8");
+    } catch {
+      return null;
+    }
+    const count = text.split(oldStr).length - 1;
+    if (count === 0) return null;
+    const replaceAll = optBool(args, "replace_all", false);
+    if (count > 1 && !replaceAll) return null;
+    const updated = replaceAll ? text.split(oldStr).join(newStr) : text.replace(oldStr, newStr);
+    return formatDiff(text, updated);
+  },
   async run(args, ctx) {
     const path = ctx.permissions.resolveWithin(reqString(args, "path"));
     const oldStr = reqString(args, "old_string");

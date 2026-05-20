@@ -14,11 +14,16 @@
 **Pretzel Porter** — a small, **fully local** terminal agent — like Claude
 Code, but it runs on any local LLM you have in Ollama and never sends anything
 off your machine. Built for working with sensitive files (portfolio, finances,
-personal docs) where privacy is the whole point. _v1.0.0_
+personal docs) where privacy is the whole point. _v1.1.0_
 
 It can **think**, **reason**, and **use tools** to read, search, edit, write,
 and run shell commands — all confined to a directory sandbox you control. With
 RAG enabled it can also do **semantic search** over an indexed knowledge base.
+
+Responses **stream** token-by-token, every file change shows a **coloured diff**
+before you approve it, `/undo` reverts mistakes, the conversation **auto-compacts**
+when the context window fills, and **Shift-Tab** flips on an autonomous mode that
+runs without stopping to ask.
 
 ## Requirements
 
@@ -156,9 +161,36 @@ Inside the REPL:
 | `/help` | show command help |
 | `/model [name]` | switch model — interactive picker, or pass a name/substring |
 | `/models` | list installed Ollama models |
+| `/compact` | summarise older turns to reclaim context space |
+| `/context` | show context-window usage as a meter |
+| `/undo` | revert the last file change |
+| `/redo` | re-apply the last reverted change |
 | `/reset` | clear the conversation history |
 | `/paths` | show the sandboxed root directories |
 | `/exit` | quit (Ctrl-C also works) |
+
+## Keys & input
+
+| Key | Action |
+|---|---|
+| `Shift-Tab` | toggle **autonomous mode** — auto-approves every write/shell action so the agent runs uninterrupted |
+| `Ctrl-C` | cancel the in-flight response; at an empty prompt, quit |
+| `Tab` | complete a slash-command or a file path |
+| trailing `\` | continue the message on the next line |
+| `↑` / `↓` | walk prompt history (persisted across sessions) |
+
+A status line above each prompt shows the model, backend, context-window
+usage, and working directory — plus a `⚡ autonomous` marker when that mode
+is on.
+
+**Autonomous mode** bypasses *all* confirmation prompts. Use it when you trust
+the task and want the agent to keep going; press `Shift-Tab` again to restore
+confirmations. The path sandbox still applies — autonomous mode never lets the
+agent touch files outside `allowedPaths`.
+
+The conversation **auto-compacts** at ~80% of `numCtx`: older turns are
+summarised by the model so a long session never silently drops history. Run
+`/compact` to do it on demand.
 
 ## Architecture
 
@@ -166,12 +198,15 @@ Inside the REPL:
 src/
   index.ts        REPL entry point
   config.ts       loads + validates agent.config.json
-  provider.ts     OllamaProvider — swappable backend (see below)
-  agent.ts        the think → call tools → observe loop
+  provider.ts     OllamaProvider — streaming, swappable backend (see below)
+  agent.ts        the think → call tools → observe loop; compaction
   permissions.ts  the directory sandbox
+  autonomy.ts     the Shift-Tab autonomous-mode toggle
+  diff.ts         dependency-free unified diff for write previews
+  undo.ts         in-session file snapshots for /undo and /redo
   state.ts        persistent trust list + last model (~/.pretzel-porter)
   ssh.ts          SSH tunnel manager for a remote Ollama
-  ui.ts           terminal rendering, banner, spinner, prompts, menu
+  ui.ts           terminal rendering, streaming, prompts, history, completion
   tools/          read_file, write_file, edit_file, list_dir, grep,
                   run_shell, search_docs (RAG)
 ```
@@ -184,6 +219,9 @@ other code changes.
 
 ## Status
 
-v1.0.0 — file tools, RAG search, native thinking, sandbox + confirmations,
-non-streaming. Planned: streamed responses, a cloud `vllm` provider,
-conversation summarisation for very long sessions.
+v1.1.0 — streamed responses, cancellable generation, conversation compaction
+with a context meter, coloured diff previews, `/undo` + `/redo`, persistent
+prompt history with Tab completion, multi-line input, and a Shift-Tab
+autonomous mode. Builds on v1.0.0's file tools, RAG search, native thinking,
+sandbox + confirmations. Planned next: project memory (`PRETZEL.md`), `@file`
+mentions, a repo map, and a cloud `vllm` provider.

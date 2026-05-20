@@ -65,6 +65,16 @@ export interface Tool {
   /** One-line human summary of a specific invocation, for the confirm prompt. */
   summarize(args: Record<string, unknown>): string;
   run(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult>;
+  /**
+   * Optional: a unified-diff preview of what this call will change, shown
+   * before the confirmation prompt. Returns null when no preview applies.
+   */
+  preview?(args: Record<string, unknown>, ctx: ToolContext): Promise<string | null>;
+  /**
+   * Optional: the absolute sandbox path this call will mutate, so the agent
+   * can snapshot it for /undo. Returns null when nothing can be resolved.
+   */
+  affectedPath?(args: Record<string, unknown>, ctx: ToolContext): string | null;
 }
 
 export interface AgentConfig {
@@ -133,9 +143,25 @@ export interface ChatResponse {
   toolCalls: ToolCall[];
 }
 
+/** An incremental piece of a streamed response. */
+export interface ChatDelta {
+  /** Newly arrived answer text. */
+  content?: string;
+  /** Newly arrived reasoning-trace text. */
+  thinking?: string;
+}
+
+/** Per-request options for a chat completion. */
+export interface ChatOptions {
+  /** Abort the request when this signal fires (Ctrl-C cancellation). */
+  signal?: AbortSignal;
+  /** When provided, the response is streamed and each chunk is delivered here. */
+  onDelta?: (delta: ChatDelta) => void;
+}
+
 export interface Provider {
-  /** Single non-streaming chat completion with optional tool use. */
-  chat(messages: Message[], tools: ToolSchema[]): Promise<ChatResponse>;
+  /** A chat completion with optional tool use; streams when opts.onDelta is set. */
+  chat(messages: Message[], tools: ToolSchema[], opts?: ChatOptions): Promise<ChatResponse>;
   /** Throws with a friendly message if the backend is unreachable. */
   healthCheck(): Promise<void>;
   /** Names of models available on the backend. */

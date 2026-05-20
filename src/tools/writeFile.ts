@@ -1,7 +1,8 @@
-import { writeFileSync, mkdirSync, existsSync, statSync } from "node:fs";
+import { writeFileSync, mkdirSync, existsSync, statSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type { Tool } from "../types.js";
-import { reqString } from "./util.js";
+import { reqString, looksBinary } from "./util.js";
+import { formatDiff } from "../diff.js";
 
 export const writeFileTool: Tool = {
   risk: "write",
@@ -23,6 +24,34 @@ export const writeFileTool: Tool = {
   summarize: (args) => {
     const bytes = Buffer.byteLength(String(args.content ?? ""), "utf8");
     return `write ${args.path} (${bytes} bytes)`;
+  },
+  affectedPath(args, ctx) {
+    try {
+      return ctx.permissions.resolveWithin(reqString(args, "path"));
+    } catch {
+      return null;
+    }
+  },
+  async preview(args, ctx) {
+    let path: string;
+    try {
+      path = ctx.permissions.resolveWithin(reqString(args, "path"));
+    } catch {
+      return null;
+    }
+    const content = typeof args.content === "string" ? args.content : "";
+    let old = "";
+    if (existsSync(path)) {
+      if (statSync(path).isDirectory()) return null;
+      try {
+        const buf = readFileSync(path);
+        if (looksBinary(buf)) return null;
+        old = buf.toString("utf8");
+      } catch {
+        return null;
+      }
+    }
+    return formatDiff(old, content);
   },
   async run(args, ctx) {
     const path = ctx.permissions.resolveWithin(reqString(args, "path"));

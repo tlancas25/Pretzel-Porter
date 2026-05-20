@@ -1,9 +1,12 @@
 #!/usr/bin/env node
-import { realpathSync } from "node:fs";
+import { realpathSync, readdirSync, statSync } from "node:fs";
+import { homedir } from "node:os";
+import { resolve, isAbsolute } from "node:path";
 import { loadConfig } from "./config.js";
 import { Permissions } from "./permissions.js";
 import { OllamaProvider } from "./provider.js";
 import { Agent } from "./agent.js";
+import { autonomy } from "./autonomy.js";
 import { loadState, saveState } from "./state.js";
 import { openTunnel, closeTunnel } from "./ssh.js";
 import {
@@ -13,9 +16,11 @@ import {
   closeRl,
   confirm,
   EOF,
+  onShiftTab,
   printError,
   printInfo,
   selectFromMenu,
+  setCompleter,
   startSpinner,
   stopSpinner,
 } from "./ui.js";
@@ -26,12 +31,35 @@ ${c.bold("commands")}
   /help           show this help
   /model [name]   switch the model — interactive picker, or pass a name
   /models         list the models installed in Ollama
+  /compact        summarise older turns to reclaim context space
+  /context        show context-window usage
+  /undo           revert the last file change
+  /redo           re-apply the last reverted change
   /reset          clear the conversation history
   /paths          show the sandboxed root directories
   /exit           quit (Ctrl-C also works)
 
+${c.bold("keys")}
+  Shift-Tab       toggle autonomous mode (auto-approve every action)
+  Ctrl-C          cancel the current response — or quit at an empty prompt
+  Tab             complete a command or file path
+  trailing \\      continue input on the next line
+
 Anything else is sent to the model as a request.
 `;
+
+const COMMANDS = [
+  "/help",
+  "/model",
+  "/models",
+  "/compact",
+  "/context",
+  "/undo",
+  "/redo",
+  "/reset",
+  "/paths",
+  "/exit",
+];
 
 /** Run a fallible setup step; on failure, print and exit cleanly. */
 function orExit<T>(fn: () => T): T {
@@ -139,6 +167,60 @@ async function switchModel(provider: Provider, cfg: AgentConfig, arg: string): P
   printInfo(`model switched to ${c.bold(chosen)} — applies from your next message.\n`);
 }
 
+/** Shorten an absolute path with a leading ~ for display. */
+function tildeify(p: string): string {
+  const home = homedir();
+  return p === home ? "~" : p.startsWith(home + "/") ? "~" + p.slice(home.length) : p;
+}
+
+/** Tab-completion candidates for a path fragment, relative to `base`. */
+function completePath(token: string, base: string): string[] {
+  const at = token.startsWith("@");
+  const frag = at ? token.slice(1) : token;
+  const slash = frag.lastIndexOf("/");
+  const dirPart = slash >= 0 ? frag.slice(0, slash + 1) : "";
+  const namePart = slash >= 0 ? frag.slice(slash + 1) : frag;
+
+  let dir = dirPart || ".";
+  if (dir.startsWith("~")) dir = homedir() + dir.slice(1);
+  const abs = isAbsolute(dir) ? dir : resolve(base, dir);
+
+  let entries: string[];
+  try {
+    entries = readdirSync(abs);
+  } catch {
+    return [];
+  }
+  const showHidden = namePart.startsWith(".");
+  return entries
+    .filter((e) => e.startsWith(namePart) && (showHidden || !e.startsWith(".")))
+    .slice(0, 50)
+    .map((e) => {
+      const full = (at ? "@" : "") + dirPart + e;
+      try {
+        return statSync(resolve(abs, e)).isDirectory() ? full + "/" : full;
+      } catch {
+        return full;
+      }
+    });
+}
+
+/** Read one user message, supporting multi-line input via a trailing backslash. */
+async function readUserInput(): Promise<string> {
+  let acc = "";
+  let prompt = c.cyan("you ▸ ");
+  for (;;) {
+    const line = await ask(prompt);
+    if (line === EOF) return EOF;
+    if (line.endsWith("\\")) {
+      acc += line.slice(0, -1) + "\n";
+      prompt = c.cyan("   ┄ ");
+      continue;
+    }
+    return acc + line;
+  }
+}
+
 async function main(): Promise<void> {
   const cfg = orExit(loadConfig);
   const cwd = realpathSync(process.cwd());
@@ -147,6 +229,7 @@ async function main(): Promise<void> {
 
   // Choose the backend: local Ollama, or the SSH-tunnelled remote one.
   // The picker only appears when an SSH target is configured (ssh.enabled).
+  let backendLabel = "local";
   if (cfg.ssh.enabled) {
     const sshTarget = cfg.ssh.mode === "gcloud" ? cfg.ssh.gcloud.instance : cfg.ssh.host;
     const choice = await selectFromMenu(
@@ -165,6 +248,7 @@ async function main(): Promise<void> {
         process.exit(1);
       }
       stopSpinner();
+      backendLabel = "cloud";
       printInfo(`  ssh tunnel up — Ollama via ${cfg.baseUrl}\n`);
     }
   }
@@ -200,14 +284,61 @@ async function main(): Promise<void> {
     );
   }
 
+  // Tab completion: slash-commands first, then file paths.
+  setCompleter((line) => {
+    if (line.startsWith("/") && !line.includes(" ")) {
+      return [COMMANDS.filter((cmd) => cmd.startsWith(line)), line];
+    }
+    const token = line.split(/\s+/).pop() ?? "";
+    if (!token) return [[], line];
+    return [completePath(token, cwd), token];
+  });
+
+  // Shift-Tab flips autonomous mode — bypasses every confirmation.
+  onShiftTab(() => {
+    const on = autonomy.toggle();
+    process.stdout.write(
+      "\n" +
+        (on
+          ? c.yellow("⚡ autonomous mode ON — every write/shell action is auto-approved")
+          : c.green("✓ autonomous mode OFF — confirmations restored")) +
+        "\n",
+    );
+  });
+
+  // Ctrl-C cancels an in-flight response; at an idle prompt it quits.
   process.on("SIGINT", () => {
+    if (agent.running) {
+      agent.cancel();
+      return;
+    }
     console.log(c.dim("\nbye."));
     cleanup();
     process.exit(0);
   });
 
+  /** The dim status line shown above each prompt. */
+  const statusLine = (): string => {
+    const { pct } = agent.contextUsage();
+    const pctRound = Math.min(999, Math.round(pct * 100));
+    const ctxColor = pctRound >= 95 ? c.red : pctRound >= 80 ? c.yellow : c.dim;
+    const model = cfg.model.length > 30 ? cfg.model.slice(0, 29) + "…" : cfg.model;
+    const sep = c.dim(" · ");
+    let line =
+      c.dim(model) +
+      sep +
+      c.dim(backendLabel) +
+      sep +
+      ctxColor(`ctx ${pctRound}%`) +
+      sep +
+      c.dim(tildeify(cwd));
+    if (autonomy.enabled) line += sep + c.yellow("⚡ autonomous");
+    return line;
+  };
+
   for (;;) {
-    const raw = await ask(c.cyan("you ▸ "));
+    console.log(statusLine());
+    const raw = await readUserInput();
     if (raw === EOF) break;
     const input = raw.trim();
     if (!input) continue;
@@ -232,6 +363,21 @@ async function main(): Promise<void> {
         }
       } else if (cmd === "model") {
         await switchModel(provider, cfg, arg);
+      } else if (cmd === "compact") {
+        printInfo((await agent.compact("manual")) + "\n");
+      } else if (cmd === "context") {
+        const { tokens, pct } = agent.contextUsage();
+        const barLen = 24;
+        const filled = Math.max(0, Math.min(barLen, Math.round(pct * barLen)));
+        const bar = "█".repeat(filled) + "░".repeat(barLen - filled);
+        printInfo(
+          `context: ${tokens} / ${cfg.numCtx} tokens (${Math.round(pct * 100)}%)\n` +
+            `  ${bar}\n`,
+        );
+      } else if (cmd === "undo") {
+        printInfo(agent.performUndo() + "\n");
+      } else if (cmd === "redo") {
+        printInfo(agent.performRedo() + "\n");
       } else {
         printError(`unknown command "${input}". Try /help.`);
       }
