@@ -12,6 +12,9 @@ import { openTunnel, closeTunnel } from "./ssh.js";
 import { buildRepoMap } from "./repomap.js";
 import { initProjectMemory } from "./projectMemory.js";
 import { allNotes, forget } from "./memory.js";
+import { renderTodos } from "./todos.js";
+import { loadCustomCommands, expandCommand } from "./commands.js";
+import { connectMcpServers, type McpClient } from "./mcp.js";
 import {
   ask,
   banner,
@@ -44,6 +47,7 @@ ${c.bold("commands")}
   /add-dir <path> pin a directory into every prompt
   /drop <path>    unpin a file or directory
   /memory         list long-term memory ( /memory forget <id> )
+  /todos          show the agent's current task list
   /init           create a starter PRETZEL.md project-memory file
   /reload         reload PRETZEL.md into context
   /reset          clear the conversation history
@@ -74,6 +78,7 @@ const COMMANDS = [
   "/add-dir",
   "/drop",
   "/memory",
+  "/todos",
   "/init",
   "/reload",
   "/reset",
@@ -91,7 +96,11 @@ function orExit<T>(fn: () => T): T {
   }
 }
 
+/** MCP server connections — closed on exit. */
+let mcpClients: McpClient[] = [];
+
 function cleanup(): void {
+  for (const client of mcpClients) client.close();
   closeTunnel();
   closeRl();
 }
@@ -294,7 +303,24 @@ async function main(): Promise<void> {
   const permissions = orExit(
     () => new Permissions([cwd, ...cfg.allowedPaths], cwd, cfg.readOnlyPaths),
   );
-  const agent = new Agent(cfg, provider, permissions);
+
+  // Connect any configured MCP servers; their tools join the registry.
+  let mcpTools: import("./types.js").Tool[] = [];
+  const mcpNames = Object.keys(cfg.mcpServers);
+  if (mcpNames.length > 0) {
+    startSpinner(`connecting to ${mcpNames.length} MCP server(s)`);
+    const result = await connectMcpServers(cfg.mcpServers);
+    stopSpinner();
+    mcpClients = result.clients;
+    mcpTools = result.tools;
+    for (const err of result.errors) printError(`MCP ${err}`);
+    if (mcpTools.length > 0) {
+      printInfo(`  ${mcpTools.length} MCP tool(s) from ${mcpClients.length} server(s)\n`);
+    }
+  }
+
+  const agent = new Agent(cfg, provider, permissions, mcpTools);
+  const customCommands = loadCustomCommands();
   banner(cfg.model, permissions.roots(), cfg.rag.enabled);
 
   // Warn if the chosen model can't use tools — it will be chat-only.
@@ -306,10 +332,11 @@ async function main(): Promise<void> {
     );
   }
 
-  // Tab completion: slash-commands first, then file paths.
+  // Tab completion: slash-commands (built-in + custom) first, then file paths.
+  const allCommands = [...COMMANDS, ...[...customCommands.keys()].map((n) => "/" + n)];
   setCompleter((line) => {
     if (line.startsWith("/") && !line.includes(" ")) {
-      return [COMMANDS.filter((cmd) => cmd.startsWith(line)), line];
+      return [allCommands.filter((cmd) => cmd.startsWith(line)), line];
     }
     const token = line.split(/\s+/).pop() ?? "";
     if (!token) return [[], line];
@@ -371,8 +398,18 @@ async function main(): Promise<void> {
       const arg = parts.slice(1).join(" ").trim();
 
       if (cmd === "exit" || cmd === "quit") break;
-      else if (cmd === "help") printInfo(HELP);
-      else if (cmd === "reset") {
+      else if (cmd === "help") {
+        printInfo(HELP);
+        if (customCommands.size) {
+          printInfo(
+            "custom commands (~/.pretzel-porter/commands/):\n" +
+              [...customCommands.values()]
+                .map((cc) => `  /${cc.name}  ${c.dim(cc.description)}`)
+                .join("\n") +
+              "\n",
+          );
+        }
+      } else if (cmd === "reset") {
         agent.reset();
         printInfo("conversation cleared.\n");
       } else if (cmd === "paths") {
@@ -444,6 +481,10 @@ async function main(): Promise<void> {
       } else if (cmd === "reload") {
         agent.reloadContext();
         printInfo("project memory reloaded into context.\n");
+      } else if (cmd === "todos") {
+        printInfo(renderTodos() + "\n");
+      } else if (customCommands.has(cmd)) {
+        await agent.run(expandCommand(customCommands.get(cmd)!, arg));
       } else {
         printError(`unknown command "${input}". Try /help.`);
       }

@@ -24,6 +24,9 @@ const DEFAULTS: AgentConfig = {
   allowedPaths: [],
   readOnlyPaths: [],
   autoApprove: { read: true, write: false, shell: false },
+  airgap: false,
+  mcpServers: {},
+  hooks: {},
   rag: { enabled: true, command: "rag", defaultK: 5 },
   ssh: {
     enabled: false,
@@ -97,6 +100,11 @@ export function loadConfig(): AgentConfig {
   if (typeof cfg.model !== "string" || !cfg.model) fail("model must be a non-empty string");
   if (!Array.isArray(cfg.allowedPaths)) fail("allowedPaths must be an array");
   if (!Array.isArray(cfg.readOnlyPaths)) fail("readOnlyPaths must be an array");
+  if (typeof cfg.airgap !== "boolean") fail("airgap must be true/false");
+  if (typeof cfg.mcpServers !== "object" || cfg.mcpServers === null) {
+    fail("mcpServers must be an object");
+  }
+  if (typeof cfg.hooks !== "object" || cfg.hooks === null) fail("hooks must be an object");
   for (const tier of ["read", "write", "shell"] as Risk[]) {
     if (typeof cfg.autoApprove[tier] !== "boolean") fail(`autoApprove.${tier} must be true/false`);
   }

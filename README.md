@@ -78,6 +78,9 @@ defaults and is gitignored.
 | `allowedPaths` | **The sandbox.** List of directories the agent may touch. Relative paths resolve from the project root. |
 | `readOnlyPaths`| Reference directories the agent may **read** but never modify. |
 | `autoApprove`  | Per-risk-tier auto-approval: `read` / `write` / `shell`. |
+| `airgap`       | When `true`, disables every network tool (`web_fetch`, `web_search`). |
+| `mcpServers`   | MCP servers to launch over stdio; their tools join the registry. |
+| `hooks`        | Shell commands run at lifecycle points — see [Extensibility](#extensibility). |
 | `maxSteps`     | Safety cap on tool-call iterations per request. |
 | `rag`          | `enabled` / `command` / `defaultK` — semantic search over a RAG store via the `rag` CLI. Set `enabled: false` to hide the `search_docs` tool. |
 | `ssh`          | Tunnel to a self-hosted Ollama — see [Remote LLM over SSH](#remote-llm-over-ssh). |
@@ -170,6 +173,7 @@ Inside the REPL:
 | `/add <path>` / `/add-dir <path>` | pin a file or directory into every prompt |
 | `/drop <path>` | unpin a file or directory |
 | `/memory` | list long-term memory (`/memory forget <id>`) |
+| `/todos` | show the agent's current task list |
 | `/init` | create a starter `PRETZEL.md` project-memory file |
 | `/reload` | reload `PRETZEL.md` into context |
 | `/reset` | clear the conversation history |
@@ -220,6 +224,47 @@ the context window:
 - **Read-only reference paths** — list directories under `readOnlyPaths` in the
   config and the agent can read them but never modify them.
 
+## Extensibility
+
+- **MCP servers** — connect to [Model Context Protocol](https://modelcontextprotocol.io)
+  servers over stdio; their tools join the registry automatically. Configure
+  them under `mcpServers`:
+
+  ```json
+  "mcpServers": {
+    "fetch": { "command": "uvx", "args": ["mcp-server-fetch"] }
+  }
+  ```
+
+- **Custom slash commands** — drop a Markdown file in
+  `~/.pretzel-porter/commands/`; `review.md` becomes `/review`. The file body
+  is a prompt template — `$ARGS` is replaced with whatever you type after the
+  command. An optional `<!-- description -->` on the first line shows in `/help`.
+
+- **Hooks** — run shell commands at lifecycle points. Each hook receives a JSON
+  payload on stdin; a non-zero exit from a `UserPromptSubmit` or `PreToolUse`
+  hook cancels the action.
+
+  ```json
+  "hooks": {
+    "PostToolUse": [{ "matcher": "write_file|edit_file", "command": "prettier --write ." }],
+    "PreToolUse":  [{ "matcher": "run_shell", "command": "./guardrail.sh" }]
+  }
+  ```
+
+  Events: `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop`. The `matcher`
+  is a regex tested against the tool name (tool events only).
+
+- **Air-gap mode** — set `airgap: true` to drop every network-capable tool, a
+  hard guarantee for a fully offline session.
+
+## Built-in tools
+
+`read_file`, `write_file`, `edit_file`, `multi_edit`, `apply_patch`,
+`list_dir`, `grep`, `repo_map`, `run_shell`, `todo_write`, `remember`,
+`recall`, `search_docs` (RAG), and — unless air-gapped — `web_fetch` and
+`web_search`. Plus any tools exposed by configured MCP servers.
+
 ## Architecture
 
 ```
@@ -236,11 +281,16 @@ src/
   projectMemory.ts  PRETZEL.md loading + /init
   repomap.ts      dependency-free project symbol outline
   memory.ts       persistent long-term notes store
+  todos.ts        in-session task list
+  hooks.ts        lifecycle hook runner
+  commands.ts     custom slash-command loader
+  mcp.ts          Model Context Protocol stdio client
   state.ts        persistent trust list + last model (~/.pretzel-porter)
   ssh.ts          SSH tunnel manager for a remote Ollama
   ui.ts           terminal rendering, streaming, prompts, history, completion
-  tools/          read_file, write_file, edit_file, list_dir, grep,
-                  run_shell, search_docs (RAG), repo_map, remember, recall
+  tools/          read/write/edit/multi_edit/apply_patch, list_dir, grep,
+                  run_shell, search_docs, repo_map, remember, recall,
+                  todo_write, web_fetch, web_search
 ```
 
 The `Provider` interface (`src/types.ts`) is backend-agnostic. Today only

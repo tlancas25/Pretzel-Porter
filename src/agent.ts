@@ -3,6 +3,7 @@ import type {
   ChatDelta,
   Message,
   Provider,
+  Tool,
   ToolCall,
   ToolContext,
   ToolResult,
@@ -13,6 +14,7 @@ import { autonomy } from "./autonomy.js";
 import { UndoStore } from "./undo.js";
 import { FileContext } from "./context.js";
 import { loadProjectMemory } from "./projectMemory.js";
+import { runHooks } from "./hooks.js";
 import {
   c,
   confirm,
@@ -109,8 +111,9 @@ export class Agent {
     private readonly cfg: AgentConfig,
     private readonly provider: Provider,
     private readonly permissions: Permissions,
+    extraTools: Tool[] = [],
   ) {
-    this.tools = buildToolRegistry(cfg);
+    this.tools = buildToolRegistry(cfg, extraTools);
     this.ctx = {
       permissions,
       cwd: permissions.primaryRoot(),
@@ -183,6 +186,18 @@ export class Agent {
 
   /** Run one user turn to completion (final answer or step limit). */
   async run(userInput: string): Promise<void> {
+    const submit = await runHooks(
+      "UserPromptSubmit",
+      this.cfg.hooks.UserPromptSubmit,
+      { prompt: userInput },
+      this.ctx.cwd,
+    );
+    for (const line of submit.output) printInfo(c.dim(`  [hook] ${line}`));
+    if (submit.blocked) {
+      printError("A UserPromptSubmit hook blocked this prompt.");
+      return;
+    }
+
     // Pinned files and @mentions are attached ahead of the request itself.
     const attached = this.fileContext.build(userInput);
     const content = attached
@@ -198,6 +213,9 @@ export class Agent {
       this._running = false;
       this.controller = null;
     }
+
+    const stop = await runHooks("Stop", this.cfg.hooks.Stop, { prompt: userInput }, this.ctx.cwd);
+    for (const line of stop.output) printInfo(c.dim(`  [hook] ${line}`));
   }
 
   private async loop(signal: AbortSignal): Promise<void> {
@@ -278,6 +296,18 @@ export class Agent {
     }
     printToolCall(call.name, summary);
 
+    const preHook = await runHooks(
+      "PreToolUse",
+      this.cfg.hooks.PreToolUse,
+      { tool: call.name, arguments: call.arguments },
+      this.ctx.cwd,
+    );
+    for (const line of preHook.output) printInfo(c.dim(`  [hook] ${line}`));
+    if (preHook.blocked) {
+      printToolResult(false, "blocked by a PreToolUse hook");
+      return { ok: false, output: "A PreToolUse hook blocked this tool call. Do not retry it." };
+    }
+
     // Show a coloured diff of what a write tool will change, before approval.
     if (tool.risk !== "read" && tool.preview) {
       try {
@@ -326,6 +356,14 @@ export class Agent {
 
     // A failed mutation changed nothing on disk — drop its snapshot.
     if (snapshotted && !result.ok) this.undo.discardLast();
+
+    const postHook = await runHooks(
+      "PostToolUse",
+      this.cfg.hooks.PostToolUse,
+      { tool: call.name, arguments: call.arguments, ok: result.ok, output: result.output },
+      this.ctx.cwd,
+    );
+    for (const line of postHook.output) printInfo(c.dim(`  [hook] ${line}`));
 
     printToolResult(result.ok, result.output);
     return result;

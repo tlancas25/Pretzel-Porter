@@ -99,8 +99,37 @@ export interface AgentConfig {
   /** Paths the agent may read but never modify (docs, configs). */
   readOnlyPaths: string[];
   autoApprove: Record<Risk, boolean>;
+  /** When true, every network-capable tool is disabled — a hard offline guarantee. */
+  airgap: boolean;
   rag: RagConfig;
   ssh: SshConfig;
+  /** MCP servers to connect to at startup; their tools join the registry. */
+  mcpServers: Record<string, McpServerConfig>;
+  /** Lifecycle hooks — shell commands run at defined points. */
+  hooks: Partial<Record<HookEvent, HookSpec[]>>;
+}
+
+/** A Model Context Protocol server launched over stdio. */
+export interface McpServerConfig {
+  /** Executable to spawn. */
+  command: string;
+  /** Arguments passed to the executable. */
+  args?: string[];
+  /** Extra environment variables for the server process. */
+  env?: Record<string, string>;
+  /** Set false to keep the entry but not connect. Default true. */
+  enabled?: boolean;
+}
+
+/** Points in the session lifecycle at which hooks can fire. */
+export type HookEvent = "UserPromptSubmit" | "PreToolUse" | "PostToolUse" | "Stop";
+
+/** One configured hook — a shell command, optionally scoped by a matcher. */
+export interface HookSpec {
+  /** Shell command to run. */
+  command: string;
+  /** For tool events: a regex tested against the tool name. Default: all tools. */
+  matcher?: string;
 }
 
 export interface SshConfig {
