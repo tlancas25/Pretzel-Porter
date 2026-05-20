@@ -214,6 +214,17 @@ in Phase 3+ because it absorbs many would-be tools for free.
 
 ## Status
 
-Plan drafted from: (a) the Claude Code feature taxonomy, (b) a survey of Aider,
-Cline, OpenHands, goose, Continue, `llm`, OpenCode, Crush. Awaiting operator
-review before implementation begins.
+**Complete — all five phases shipped (v1.2.0, 2026-05-20).** Plan drafted from:
+(a) the Claude Code feature taxonomy, (b) a survey of Aider, Cline, OpenHands,
+goose, Continue, `llm`, OpenCode, Crush.
+
+Implementation notes / deviations:
+- **#10 Repo map** uses dependency-free regex heuristics across eight
+  languages, not tree-sitter — tree-sitter is a native dependency and the
+  project ships with zero runtime deps.
+- **#12 MCP client** implements the stdio transport only (HTTP/SSE skipped) —
+  stdio servers are local processes, which suits the privacy-first design.
+- **#17 Planner/executor split** is a model-tag split on one backend
+  (`plannerModel`); a cross-backend (local + cloud) split is not yet wired.
+- **#21 Session persistence** uses JSON files rather than SQLite — avoids the
+  experimental `node:sqlite` builtin and keeps the store inspectable.
