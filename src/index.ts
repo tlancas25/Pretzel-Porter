@@ -39,6 +39,7 @@ import { listJobs, getJob, killAllJobs } from "./jobs.js";
 import { airgap } from "./airgap.js";
 import { setAudit, AUDIT_FILE } from "./audit.js";
 import { newSessionId, saveSession, loadSession, listSessions } from "./session.js";
+import { readPortMem } from "./portmem.js";
 import type { AgentConfig, Provider } from "./types.js";
 
 const HELP = `
@@ -69,6 +70,7 @@ ${c.bold("commands")}
   /status         show the current session status
   /init           create a starter PRETZEL.md project-memory file
   /reload         reload PRETZEL.md into context
+  /portmem        show this directory's working memory (portmem.md)
   /reset          clear the conversation history
   /paths          show the sandboxed root directories
   /exit           quit (Ctrl-C also works)
@@ -111,6 +113,7 @@ const COMMANDS = [
   "/status",
   "/init",
   "/reload",
+  "/portmem",
   "/reset",
   "/paths",
   "/exit",
@@ -531,7 +534,10 @@ async function main(): Promise<void> {
         printInfo(initProjectMemory(cwd) + "\n");
       } else if (cmd === "reload") {
         agent.reloadContext();
-        printInfo("project memory reloaded into context.\n");
+        printInfo("project + working memory reloaded into context.\n");
+      } else if (cmd === "portmem") {
+        const mem = readPortMem(cwd);
+        printInfo((mem || "portmem.md is empty — it fills in as you work here.") + "\n");
       } else if (cmd === "todos") {
         printInfo(renderTodos() + "\n");
       } else if (cmd === "plan") {

@@ -16,6 +16,7 @@ import { planMode } from "./planmode.js";
 import { UndoStore } from "./undo.js";
 import { FileContext } from "./context.js";
 import { loadProjectMemory } from "./projectMemory.js";
+import { loadPortMem, appendPortMem } from "./portmem.js";
 import { runHooks } from "./hooks.js";
 import { isGitRepo, gitDiff, gitCommitAll } from "./git.js";
 import { PermissionRules } from "./rules.js";
@@ -41,6 +42,7 @@ function systemPrompt(
   readOnlyRoots: string[],
   ragEnabled: boolean,
   projectMemory: string,
+  workingMemory: string,
 ): string {
   return [
     "You are Pretzel Porter, a private assistant that runs entirely on the user's",
@@ -94,6 +96,16 @@ function systemPrompt(
           "─────────────────────────────────────────────────────────────────",
         ]
       : []),
+    ...(workingMemory
+      ? [
+          "",
+          "──────────── Working memory (recent activity, portmem.md) ────────────",
+          workingMemory,
+          "This is what you were doing in earlier sessions in this directory.",
+          "Continue from here. portmem.md is updated automatically each turn.",
+          "──────────────────────────────────────────────────────────────────────",
+        ]
+      : []),
   ].join("\n");
 }
 
@@ -120,6 +132,8 @@ export class Agent {
   private autoCompactedThisTurn = false;
   /** The final answer text of the last turn — read back by a parent agent. */
   private lastAnswer = "";
+  /** Tool names executed during the current turn — for the portmem.md log. */
+  private turnTools: string[] = [];
 
   constructor(
     private readonly cfg: AgentConfig,
@@ -188,6 +202,7 @@ export class Agent {
       this.permissions.readOnlyRoots(),
       this.cfg.rag.enabled,
       loadProjectMemory(this.permissions.primaryRoot()),
+      loadPortMem(this.permissions.primaryRoot()),
     );
   }
 
@@ -312,6 +327,7 @@ export class Agent {
       images: images.length ? images : undefined,
     });
     this.lastAnswer = "";
+    this.turnTools = [];
     this.controller = new AbortController();
     this._running = true;
     this.autoCompactedThisTurn = false;
@@ -325,6 +341,12 @@ export class Agent {
     if (!this.isSubagent) {
       const stop = await runHooks("Stop", this.cfg.hooks.Stop, { prompt: userInput }, this.ctx.cwd);
       for (const line of stop.output) printInfo(c.dim(`  [hook] ${line}`));
+      // Record the turn in the directory's working memory (portmem.md).
+      appendPortMem(this.ctx.cwd, {
+        request: userInput,
+        tools: this.turnTools,
+        outcome: this.lastAnswer,
+      });
     }
   }
 
@@ -506,6 +528,7 @@ export class Agent {
     } catch (e) {
       result = { ok: false, output: `Tool failed: ${(e as Error).message}` };
     }
+    this.turnTools.push(call.name);
 
     // A failed mutation changed nothing on disk — drop its snapshot.
     if (snapshotted && !result.ok) this.undo.discardLast();

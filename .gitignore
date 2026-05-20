@@ -10,3 +10,6 @@ dist/
 
 # Never commit a config that may point at sensitive directories or hosts
 agent.config.local.json
+
+# Runtime working memory — created per directory by pport, not source
+portmem.md
