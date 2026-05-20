@@ -77,6 +77,8 @@ export interface AgentConfig {
   maxSteps: number;
   shellTimeoutMs: number;
   maxReadBytes: number;
+  /** Abort a single model request after this long, so a hung/slow model fails cleanly. */
+  requestTimeoutMs: number;
   allowedPaths: string[];
   autoApprove: Record<Risk, boolean>;
   rag: RagConfig;

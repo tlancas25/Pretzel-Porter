@@ -20,6 +20,7 @@ const DEFAULTS: AgentConfig = {
   maxSteps: 25,
   shellTimeoutMs: 30000,
   maxReadBytes: 200000,
+  requestTimeoutMs: 300000,
   allowedPaths: [],
   autoApprove: { read: true, write: false, shell: false },
   rag: { enabled: true, command: "rag", defaultK: 5 },

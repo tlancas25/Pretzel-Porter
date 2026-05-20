@@ -24,7 +24,9 @@ export class OllamaProvider implements Provider {
   private async fetchTags(): Promise<{ name?: string; model?: string }[]> {
     let res: Response;
     try {
-      res = await fetch(`${this.cfg.baseUrl}/api/tags`);
+      res = await fetch(`${this.cfg.baseUrl}/api/tags`, {
+        signal: AbortSignal.timeout(15000),
+      });
     } catch (e) {
       throw new Error(
         `Cannot reach Ollama at ${this.cfg.baseUrl} — is it running? ` +
@@ -63,6 +65,7 @@ export class OllamaProvider implements Provider {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ model }),
+        signal: AbortSignal.timeout(15000),
       });
       if (res.ok) {
         const data = (await res.json()) as { capabilities?: string[] };
@@ -100,9 +103,19 @@ export class OllamaProvider implements Provider {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
+        signal: AbortSignal.timeout(this.cfg.requestTimeoutMs),
       });
     } catch (e) {
-      throw new Error(`Lost connection to Ollama: ${(e as Error).message}`);
+      const err = e as Error;
+      if (err.name === "TimeoutError" || err.name === "AbortError") {
+        const secs = Math.round(this.cfg.requestTimeoutMs / 1000);
+        throw new Error(
+          `No response from "${this.cfg.model}" within ${secs}s. The model may be ` +
+            `overloaded or too slow — try a faster or quantized model, or raise ` +
+            `requestTimeoutMs in the config.`,
+        );
+      }
+      throw new Error(`Lost connection to Ollama: ${err.message}`);
     }
     if (!res.ok) {
       const detail = await res.text().catch(() => "");
