@@ -1,0 +1,12 @@
+node_modules/
+dist/
+*.log
+.DS_Store
+
+# Editor / tool local state — never commit
+.claude/
+.vscode/
+.idea/
+
+# Never commit a config that may point at sensitive directories or hosts
+agent.config.local.json

@@ -1,0 +1,42 @@
+{
+  "provider": "ollama",
+  "baseUrl": "http://localhost:11434",
+  "model": "huihui_ai/gemma-4-abliterated:e4b",
+  "temperature": 0.4,
+  "numCtx": 131072,
+  "think": true,
+  "maxSteps": 25,
+  "shellTimeoutMs": 30000,
+  "maxReadBytes": 200000,
+
+  "allowedPaths": [],
+
+  "autoApprove": {
+    "read": true,
+    "write": false,
+    "shell": false
+  },
+
+  "rag": {
+    "enabled": true,
+    "command": "rag",
+    "defaultK": 5
+  },
+
+  "ssh": {
+    "enabled": false,
+    "mode": "gcloud",
+    "host": "",
+    "user": "",
+    "port": 22,
+    "identityFile": "",
+    "gcloud": {
+      "instance": "",
+      "zone": "",
+      "project": "",
+      "iap": false
+    },
+    "remotePort": 11434,
+    "localPort": 11435
+  }
+}

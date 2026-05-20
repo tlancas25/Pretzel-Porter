@@ -1,0 +1,24 @@
+{
+  "name": "pretzel-porter",
+  "version": "1.0.0",
+  "description": "Pretzel Porter — a local, private terminal agent that runs on any local LLM from Ollama, for working with sensitive files like a portfolio or personal finances without anything leaving your machine.",
+  "type": "module",
+  "bin": {
+    "pport": "./dist/index.js"
+  },
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
