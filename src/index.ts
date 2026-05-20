@@ -15,6 +15,9 @@ import { allNotes, forget } from "./memory.js";
 import { renderTodos } from "./todos.js";
 import { loadCustomCommands, expandCommand } from "./commands.js";
 import { connectMcpServers, type McpClient } from "./mcp.js";
+import { planMode } from "./planmode.js";
+import { gitDiff } from "./git.js";
+import { listJobs, getJob, killAllJobs } from "./jobs.js";
 import {
   ask,
   banner,
@@ -48,6 +51,10 @@ ${c.bold("commands")}
   /drop <path>    unpin a file or directory
   /memory         list long-term memory ( /memory forget <id> )
   /todos          show the agent's current task list
+  /plan           toggle plan mode — read-only investigation, no changes
+  /diff           show the git working-tree diff
+  /commit [msg]   commit changes (model writes the message if omitted)
+  /jobs           list background jobs ( /jobs <id> for output )
   /init           create a starter PRETZEL.md project-memory file
   /reload         reload PRETZEL.md into context
   /reset          clear the conversation history
@@ -79,6 +86,10 @@ const COMMANDS = [
   "/drop",
   "/memory",
   "/todos",
+  "/plan",
+  "/diff",
+  "/commit",
+  "/jobs",
   "/init",
   "/reload",
   "/reset",
@@ -100,6 +111,7 @@ function orExit<T>(fn: () => T): T {
 let mcpClients: McpClient[] = [];
 
 function cleanup(): void {
+  killAllJobs();
   for (const client of mcpClients) client.close();
   closeTunnel();
   closeRl();
@@ -381,6 +393,7 @@ async function main(): Promise<void> {
       ctxColor(`ctx ${pctRound}%`) +
       sep +
       c.dim(tildeify(cwd));
+    if (planMode.active) line += sep + c.blue("plan mode");
     if (autonomy.enabled) line += sep + c.yellow("⚡ autonomous");
     return line;
   };
@@ -483,6 +496,35 @@ async function main(): Promise<void> {
         printInfo("project memory reloaded into context.\n");
       } else if (cmd === "todos") {
         printInfo(renderTodos() + "\n");
+      } else if (cmd === "plan") {
+        const on = planMode.toggle();
+        printInfo(
+          (on
+            ? "plan mode ON — read-only investigation; the agent will not change anything."
+            : "plan mode OFF — the agent can make changes again.") + "\n",
+        );
+      } else if (cmd === "diff") {
+        const d = await gitDiff(cwd);
+        printInfo((d || "(no working-tree changes)") + "\n");
+      } else if (cmd === "commit") {
+        printInfo((await agent.gitCommit(arg)) + "\n");
+      } else if (cmd === "jobs") {
+        if (arg) {
+          const job = getJob(arg);
+          printInfo(
+            (job
+              ? `${job.id} [${job.status}]  ${job.command}\n${job.output.trim() || "(no output)"}`
+              : `no job with id "${arg}"`) + "\n",
+          );
+        } else {
+          const jobs = listJobs();
+          printInfo(
+            (jobs.length
+              ? "background jobs:\n" +
+                jobs.map((j) => `  ${j.id}  [${j.status}]  ${j.command}`).join("\n")
+              : "no background jobs.") + "\n",
+          );
+        }
       } else if (customCommands.has(cmd)) {
         await agent.run(expandCommand(customCommands.get(cmd)!, arg));
       } else {

@@ -72,6 +72,8 @@ defaults and is gitignored.
 |----------------|---------|
 | `baseUrl`      | Ollama endpoint. Default `http://localhost:11434`. |
 | `model`        | Ollama model tag. |
+| `plannerModel` | Optional second model used while in plan mode. |
+| `autoCommit`   | Commit every successful AI file change to git automatically. |
 | `temperature`  | Lower = more reliable tool use. `0.4` is a good default. |
 | `numCtx`       | Context window in tokens to request from Ollama. |
 | `think`        | Enable the model's native reasoning trace. |
@@ -174,6 +176,10 @@ Inside the REPL:
 | `/drop <path>` | unpin a file or directory |
 | `/memory` | list long-term memory (`/memory forget <id>`) |
 | `/todos` | show the agent's current task list |
+| `/plan` | toggle plan mode — read-only investigation, no changes |
+| `/diff` | show the git working-tree diff |
+| `/commit [msg]` | commit changes (the model writes the message if omitted) |
+| `/jobs` | list background jobs (`/jobs <id>` for its output) |
 | `/init` | create a starter `PRETZEL.md` project-memory file |
 | `/reload` | reload `PRETZEL.md` into context |
 | `/reset` | clear the conversation history |
@@ -258,12 +264,28 @@ the context window:
 - **Air-gap mode** — set `airgap: true` to drop every network-capable tool, a
   hard guarantee for a fully offline session.
 
+## Agentic features
+
+- **Plan mode** — `/plan` puts the session in a read-only mode: every write and
+  shell tool is refused, so the agent investigates and produces a step-by-step
+  plan. Review it, `/plan` off, and let the agent execute. If `plannerModel` is
+  set, planning runs on that model.
+- **Sub-agents** — the `task` tool delegates a self-contained job to a fresh
+  sub-agent with its own clean context; only its final answer comes back.
+- **Git integration** — `/diff` shows the working-tree diff; `/commit` commits
+  (the model writes the message from the diff if you do not supply one); set
+  `autoCommit: true` to commit each AI change automatically — git becomes the
+  audit trail and the safety net.
+- **Background jobs** — the `run_background` tool starts a long-running shell
+  command without blocking the REPL; `job_status` (and `/jobs`) checks on it.
+
 ## Built-in tools
 
 `read_file`, `write_file`, `edit_file`, `multi_edit`, `apply_patch`,
-`list_dir`, `grep`, `repo_map`, `run_shell`, `todo_write`, `remember`,
-`recall`, `search_docs` (RAG), and — unless air-gapped — `web_fetch` and
-`web_search`. Plus any tools exposed by configured MCP servers.
+`list_dir`, `grep`, `repo_map`, `run_shell`, `run_background`, `job_status`,
+`todo_write`, `task`, `remember`, `recall`, `search_docs` (RAG), and — unless
+air-gapped — `web_fetch` and `web_search`. Plus any tools exposed by configured
+MCP servers.
 
 ## Architecture
 
@@ -285,6 +307,9 @@ src/
   hooks.ts        lifecycle hook runner
   commands.ts     custom slash-command loader
   mcp.ts          Model Context Protocol stdio client
+  planmode.ts     the read-only plan-mode toggle
+  git.ts          git helpers for /diff, /commit, auto-commit
+  jobs.ts         background-job manager
   state.ts        persistent trust list + last model (~/.pretzel-porter)
   ssh.ts          SSH tunnel manager for a remote Ollama
   ui.ts           terminal rendering, streaming, prompts, history, completion

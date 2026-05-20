@@ -63,6 +63,8 @@ export interface ToolContext {
   ragCommand: string;
   /** Default number of chunks to retrieve. */
   ragDefaultK: number;
+  /** Spawn a scoped sub-agent for a focused task. Undefined inside a sub-agent. */
+  subagent?: (prompt: string) => Promise<string>;
 }
 
 export interface Tool {
@@ -87,6 +89,10 @@ export interface AgentConfig {
   provider: "ollama";
   baseUrl: string;
   model: string;
+  /** Optional second model used for planning (plan mode). Empty = use `model`. */
+  plannerModel: string;
+  /** When true, each successful AI file change is committed to git automatically. */
+  autoCommit: boolean;
   temperature: number;
   numCtx: number;
   think: boolean;
@@ -194,6 +200,8 @@ export interface ChatOptions {
   signal?: AbortSignal;
   /** When provided, the response is streamed and each chunk is delivered here. */
   onDelta?: (delta: ChatDelta) => void;
+  /** Override the model for this one request (planner/executor split). */
+  model?: string;
 }
 
 export interface Provider {

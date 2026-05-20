@@ -13,6 +13,8 @@ import { multiEditTool } from "./multiEdit.js";
 import { applyPatchTool } from "./applyPatch.js";
 import { webFetchTool } from "./webFetch.js";
 import { webSearchTool } from "./webSearch.js";
+import { taskTool } from "./task.js";
+import { runBackgroundTool, jobStatusTool } from "./background.js";
 
 export interface ToolRegistry {
   schemas: ToolSchema[];
@@ -35,10 +37,19 @@ export function buildToolRegistry(cfg: AgentConfig, extraTools: Tool[] = []): To
     rememberTool,
     recallTool,
     todoWriteTool,
+    taskTool,
+    jobStatusTool,
   ];
   if (cfg.rag.enabled) tools.push(searchDocsTool);
   if (!cfg.airgap) tools.push(webFetchTool, webSearchTool);
-  tools.push(editFileTool, multiEditTool, writeFileTool, applyPatchTool, runShellTool);
+  tools.push(
+    editFileTool,
+    multiEditTool,
+    writeFileTool,
+    applyPatchTool,
+    runShellTool,
+    runBackgroundTool,
+  );
   tools.push(...extraTools);
 
   const byName = new Map(tools.map((t) => [t.schema.name, t]));

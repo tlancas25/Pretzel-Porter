@@ -86,13 +86,14 @@ export class OllamaProvider implements Provider {
   ): Promise<ChatResponse> {
     // Only ask for thinking / tools if the model actually supports them —
     // otherwise Ollama returns HTTP 400. Unknown capabilities → optimistic.
-    const caps = await this.capabilities(this.cfg.model);
+    const model = opts.model || this.cfg.model;
+    const caps = await this.capabilities(model);
     const useThink = this.cfg.think && (caps === null || caps.has("thinking"));
     const useTools = (caps === null || caps.has("tools")) && tools.length > 0;
     const stream = typeof opts.onDelta === "function";
 
     const body = {
-      model: this.cfg.model,
+      model,
       messages: messages.map(toOllamaMessage),
       tools: useTools ? tools.map((t) => ({ type: "function", function: t })) : [],
       think: useThink,
@@ -122,7 +123,7 @@ export class OllamaProvider implements Provider {
       if (opts.signal?.aborted) return new Error("__ABORTED__");
       const secs = Math.round(this.cfg.requestTimeoutMs / 1000);
       return new Error(
-        `No response from "${this.cfg.model}" within ${secs}s. The model may be ` +
+        `No response from "${model}" within ${secs}s. The model may be ` +
           `overloaded or too slow — try a faster or quantized model, or raise ` +
           `requestTimeoutMs in the config.`,
       );

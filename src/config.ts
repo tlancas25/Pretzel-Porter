@@ -14,6 +14,8 @@ const DEFAULTS: AgentConfig = {
   provider: "ollama",
   baseUrl: "http://localhost:11434",
   model: "huihui_ai/gemma-4-abliterated:e4b",
+  plannerModel: "",
+  autoCommit: false,
   temperature: 0.4,
   numCtx: 16384,
   think: true,
@@ -98,6 +100,8 @@ export function loadConfig(): AgentConfig {
     fail("baseUrl must be an http(s) URL");
   }
   if (typeof cfg.model !== "string" || !cfg.model) fail("model must be a non-empty string");
+  if (typeof cfg.plannerModel !== "string") fail("plannerModel must be a string");
+  if (typeof cfg.autoCommit !== "boolean") fail("autoCommit must be true/false");
   if (!Array.isArray(cfg.allowedPaths)) fail("allowedPaths must be an array");
   if (!Array.isArray(cfg.readOnlyPaths)) fail("readOnlyPaths must be an array");
   if (typeof cfg.airgap !== "boolean") fail("airgap must be true/false");

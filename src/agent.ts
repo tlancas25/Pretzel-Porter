@@ -11,10 +11,12 @@ import type {
 import type { Permissions } from "./permissions.js";
 import { buildToolRegistry, type ToolRegistry } from "./tools/index.js";
 import { autonomy } from "./autonomy.js";
+import { planMode } from "./planmode.js";
 import { UndoStore } from "./undo.js";
 import { FileContext } from "./context.js";
 import { loadProjectMemory } from "./projectMemory.js";
 import { runHooks } from "./hooks.js";
+import { isGitRepo, gitDiff, gitCommitAll } from "./git.js";
 import {
   c,
   confirm,
@@ -70,6 +72,8 @@ function systemPrompt(
     "  is destructive or ambiguous, explain the risk before acting.",
     "- Use remember to save durable facts worth keeping across sessions; use recall",
     "  to retrieve them. Never store secrets.",
+    "- Delegate a large, self-contained sub-job to a sub-agent with the task tool",
+    "  to keep this conversation focused.",
     "- A turn may include an [Attached files for context] block — treat those files",
     "  as already read; do not re-read them with a tool.",
     "- Think step by step, then take one or more tool actions, observe results, and",
@@ -106,12 +110,16 @@ export class Agent {
   private _running = false;
   /** Auto-compaction is attempted at most once per user turn. */
   private autoCompactedThisTurn = false;
+  /** The final answer text of the last turn — read back by a parent agent. */
+  private lastAnswer = "";
 
   constructor(
     private readonly cfg: AgentConfig,
     private readonly provider: Provider,
     private readonly permissions: Permissions,
-    extraTools: Tool[] = [],
+    private readonly extraTools: Tool[] = [],
+    /** True for a spawned sub-agent: it skips hooks and cannot nest further. */
+    private readonly isSubagent = false,
   ) {
     this.tools = buildToolRegistry(cfg, extraTools);
     this.ctx = {
@@ -121,9 +129,20 @@ export class Agent {
       maxReadBytes: cfg.maxReadBytes,
       ragCommand: cfg.rag.command,
       ragDefaultK: cfg.rag.defaultK,
+      // Only a top-level agent can spawn sub-agents — this keeps depth at one.
+      subagent: isSubagent ? undefined : (prompt) => this.spawnSubagent(prompt),
     };
     this.fileContext = new FileContext(permissions);
     this.messages = [{ role: "system", content: this.buildSystemPrompt() }];
+  }
+
+  /** Run a prompt in a fresh sub-agent and return its final answer. */
+  private async spawnSubagent(prompt: string): Promise<string> {
+    printInfo(c.dim("  ↳ sub-agent started"));
+    const sub = new Agent(this.cfg, this.provider, this.permissions, this.extraTools, true);
+    await sub.run(prompt);
+    printInfo(c.dim("  ↳ sub-agent finished"));
+    return sub.lastAnswer || "(the sub-agent produced no final answer)";
   }
 
   private buildSystemPrompt(): string {
@@ -184,26 +203,73 @@ export class Agent {
     return label ? `Re-applied: ${label}` : "Nothing to redo.";
   }
 
+  /**
+   * Commit the working tree. With no message, the model writes one from the
+   * diff. Returns a status line for the operator.
+   */
+  async gitCommit(message: string): Promise<string> {
+    const cwd = this.ctx.cwd;
+    if (!(await isGitRepo(cwd))) return "Not a git repository.";
+    let msg = message.trim();
+    if (!msg) {
+      const diff = `${await gitDiff(cwd, true)}\n${await gitDiff(cwd, false)}`.trim();
+      if (!diff) return "Nothing to commit — working tree clean.";
+      startSpinner("writing commit message");
+      try {
+        const resp = await this.provider.chat(
+          [
+            {
+              role: "system",
+              content:
+                "Write a concise one-line git commit message (imperative mood, " +
+                "under 72 characters) for this diff. Output only the message.",
+            },
+            { role: "user", content: "Diff:\n" + diff.slice(0, 12_000) },
+          ],
+          [],
+        );
+        msg = (resp.content.trim().split("\n")[0] ?? "")
+          .replace(/^["'`]+|["'`]+$/g, "")
+          .trim();
+      } catch (e) {
+        stopSpinner();
+        return `Could not generate a commit message: ${(e as Error).message}`;
+      }
+      stopSpinner();
+      if (!msg) msg = "update";
+    }
+    const result = await gitCommitAll(cwd, msg);
+    return result.ok ? `Committed: ${msg}` : `Commit failed: ${result.output}`;
+  }
+
   /** Run one user turn to completion (final answer or step limit). */
   async run(userInput: string): Promise<void> {
-    const submit = await runHooks(
-      "UserPromptSubmit",
-      this.cfg.hooks.UserPromptSubmit,
-      { prompt: userInput },
-      this.ctx.cwd,
-    );
-    for (const line of submit.output) printInfo(c.dim(`  [hook] ${line}`));
-    if (submit.blocked) {
-      printError("A UserPromptSubmit hook blocked this prompt.");
-      return;
+    if (!this.isSubagent) {
+      const submit = await runHooks(
+        "UserPromptSubmit",
+        this.cfg.hooks.UserPromptSubmit,
+        { prompt: userInput },
+        this.ctx.cwd,
+      );
+      for (const line of submit.output) printInfo(c.dim(`  [hook] ${line}`));
+      if (submit.blocked) {
+        printError("A UserPromptSubmit hook blocked this prompt.");
+        return;
+      }
     }
+
+    // In plan mode the request is wrapped so the model investigates only.
+    const request = planMode.active
+      ? "[PLAN MODE — read-only. Investigate with read-only tools, then present a " +
+        "clear step-by-step plan. Do not modify files or run shell commands.]\n\n" +
+        userInput
+      : userInput;
 
     // Pinned files and @mentions are attached ahead of the request itself.
     const attached = this.fileContext.build(userInput);
-    const content = attached
-      ? `${attached}\n\n[User request]\n${userInput}`
-      : userInput;
+    const content = attached ? `${attached}\n\n[User request]\n${request}` : request;
     this.messages.push({ role: "user", content });
+    this.lastAnswer = "";
     this.controller = new AbortController();
     this._running = true;
     this.autoCompactedThisTurn = false;
@@ -214,8 +280,10 @@ export class Agent {
       this.controller = null;
     }
 
-    const stop = await runHooks("Stop", this.cfg.hooks.Stop, { prompt: userInput }, this.ctx.cwd);
-    for (const line of stop.output) printInfo(c.dim(`  [hook] ${line}`));
+    if (!this.isSubagent) {
+      const stop = await runHooks("Stop", this.cfg.hooks.Stop, { prompt: userInput }, this.ctx.cwd);
+      for (const line of stop.output) printInfo(c.dim(`  [hook] ${line}`));
+    }
   }
 
   private async loop(signal: AbortSignal): Promise<void> {
@@ -240,9 +308,17 @@ export class Agent {
         if (d.content) render.content(d.content);
       };
 
+      // Plan mode can route planning through a dedicated planner model.
+      const model =
+        planMode.active && this.cfg.plannerModel ? this.cfg.plannerModel : undefined;
+
       let resp;
       try {
-        resp = await this.provider.chat(this.messages, this.tools.schemas, { signal, onDelta });
+        resp = await this.provider.chat(this.messages, this.tools.schemas, {
+          signal,
+          onDelta,
+          model,
+        });
       } catch (e) {
         stopSpinner();
         render.end();
@@ -262,7 +338,8 @@ export class Agent {
       });
 
       if (resp.toolCalls.length === 0) {
-        if (!resp.content.trim()) printError("The model returned an empty response.");
+        if (resp.content.trim()) this.lastAnswer = resp.content.trim();
+        else printError("The model returned an empty response.");
         return;
       }
 
@@ -295,6 +372,17 @@ export class Agent {
       summary = JSON.stringify(call.arguments);
     }
     printToolCall(call.name, summary);
+
+    // Plan mode is read-only: refuse anything that would change state.
+    if (planMode.active && tool.risk !== "read") {
+      printToolResult(false, "blocked — plan mode is read-only");
+      return {
+        ok: false,
+        output:
+          "Plan mode is active (read-only). Do not call write or shell tools. " +
+          "Present a written step-by-step plan of the changes instead.",
+      };
+    }
 
     const preHook = await runHooks(
       "PreToolUse",
@@ -356,6 +444,18 @@ export class Agent {
 
     // A failed mutation changed nothing on disk — drop its snapshot.
     if (snapshotted && !result.ok) this.undo.discardLast();
+
+    // Optionally turn each successful AI file change into a git commit.
+    if (result.ok && tool.risk === "write" && this.cfg.autoCommit) {
+      const commit = await gitCommitAll(this.ctx.cwd, `pretzel-porter: ${summary}`);
+      printInfo(
+        c.dim(
+          commit.ok
+            ? "  ✓ auto-committed"
+            : `  (auto-commit skipped: ${commit.output.split("\n")[0]})`,
+        ),
+      );
+    }
 
     const postHook = await runHooks(
       "PostToolUse",
