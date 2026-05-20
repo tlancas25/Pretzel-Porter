@@ -54,7 +54,7 @@ export const writeFileTool: Tool = {
     return formatDiff(old, content);
   },
   async run(args, ctx) {
-    const path = ctx.permissions.resolveWithin(reqString(args, "path"));
+    const path = ctx.permissions.resolveWithin(reqString(args, "path"), true);
     const content = reqString(args, "content");
     if (existsSync(path) && statSync(path).isDirectory()) {
       return { ok: false, output: `"${args.path}" is a directory.` };

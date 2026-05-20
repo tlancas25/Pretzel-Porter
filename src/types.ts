@@ -41,10 +41,16 @@ export type Risk = "read" | "write" | "shell";
 
 /** Narrow view of the permission layer that tools are allowed to use. */
 export interface PermissionChecker {
-  /** Resolve a path and assert it is inside the sandbox, else throw. */
-  resolveWithin(inputPath: string): string;
+  /**
+   * Resolve a path and assert it is inside the sandbox, else throw.
+   * Pass `forWrite` true for mutating tools — paths under a read-only
+   * reference root are then rejected.
+   */
+  resolveWithin(inputPath: string, forWrite?: boolean): string;
   /** Absolute roots the agent is allowed to touch. */
   roots(): string[];
+  /** Absolute roots the agent may read but never modify. */
+  readOnlyRoots(): string[];
 }
 
 export interface ToolContext {
@@ -90,6 +96,8 @@ export interface AgentConfig {
   /** Abort a single model request after this long, so a hung/slow model fails cleanly. */
   requestTimeoutMs: number;
   allowedPaths: string[];
+  /** Paths the agent may read but never modify (docs, configs). */
+  readOnlyPaths: string[];
   autoApprove: Record<Risk, boolean>;
   rag: RagConfig;
   ssh: SshConfig;

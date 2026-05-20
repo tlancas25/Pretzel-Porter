@@ -22,6 +22,7 @@ const DEFAULTS: AgentConfig = {
   maxReadBytes: 200000,
   requestTimeoutMs: 300000,
   allowedPaths: [],
+  readOnlyPaths: [],
   autoApprove: { read: true, write: false, shell: false },
   rag: { enabled: true, command: "rag", defaultK: 5 },
   ssh: {
@@ -95,6 +96,7 @@ export function loadConfig(): AgentConfig {
   }
   if (typeof cfg.model !== "string" || !cfg.model) fail("model must be a non-empty string");
   if (!Array.isArray(cfg.allowedPaths)) fail("allowedPaths must be an array");
+  if (!Array.isArray(cfg.readOnlyPaths)) fail("readOnlyPaths must be an array");
   for (const tier of ["read", "write", "shell"] as Risk[]) {
     if (typeof cfg.autoApprove[tier] !== "boolean") fail(`autoApprove.${tier} must be true/false`);
   }

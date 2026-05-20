@@ -9,6 +9,9 @@ import { Agent } from "./agent.js";
 import { autonomy } from "./autonomy.js";
 import { loadState, saveState } from "./state.js";
 import { openTunnel, closeTunnel } from "./ssh.js";
+import { buildRepoMap } from "./repomap.js";
+import { initProjectMemory } from "./projectMemory.js";
+import { allNotes, forget } from "./memory.js";
 import {
   ask,
   banner,
@@ -35,6 +38,14 @@ ${c.bold("commands")}
   /context        show context-window usage
   /undo           revert the last file change
   /redo           re-apply the last reverted change
+  /map            print a structural map of the project
+  /files          list pinned context files ( /files clear  to empty )
+  /add <path>     pin a file or directory into every prompt
+  /add-dir <path> pin a directory into every prompt
+  /drop <path>    unpin a file or directory
+  /memory         list long-term memory ( /memory forget <id> )
+  /init           create a starter PRETZEL.md project-memory file
+  /reload         reload PRETZEL.md into context
   /reset          clear the conversation history
   /paths          show the sandboxed root directories
   /exit           quit (Ctrl-C also works)
@@ -45,6 +56,7 @@ ${c.bold("keys")}
   Tab             complete a command or file path
   trailing \\      continue input on the next line
 
+Mention a file inline with ${c.bold("@path")} to attach it for one turn.
 Anything else is sent to the model as a request.
 `;
 
@@ -56,6 +68,14 @@ const COMMANDS = [
   "/context",
   "/undo",
   "/redo",
+  "/map",
+  "/files",
+  "/add",
+  "/add-dir",
+  "/drop",
+  "/memory",
+  "/init",
+  "/reload",
   "/reset",
   "/paths",
   "/exit",
@@ -271,7 +291,9 @@ async function main(): Promise<void> {
   state.lastModel = cfg.model;
   saveState(state);
 
-  const permissions = orExit(() => new Permissions([cwd, ...cfg.allowedPaths], cwd));
+  const permissions = orExit(
+    () => new Permissions([cwd, ...cfg.allowedPaths], cwd, cfg.readOnlyPaths),
+  );
   const agent = new Agent(cfg, provider, permissions);
   banner(cfg.model, permissions.roots(), cfg.rag.enabled);
 
@@ -354,7 +376,10 @@ async function main(): Promise<void> {
         agent.reset();
         printInfo("conversation cleared.\n");
       } else if (cmd === "paths") {
-        printInfo("sandboxed roots:\n  " + permissions.roots().join("\n  ") + "\n");
+        const ro = permissions.readOnlyRoots();
+        let txt = "sandboxed roots (read / write):\n  " + permissions.roots().join("\n  ");
+        if (ro.length) txt += "\nread-only reference roots:\n  " + ro.join("\n  ");
+        printInfo(txt + "\n");
       } else if (cmd === "models") {
         try {
           printInfo("installed models:\n  " + (await provider.listModels()).join("\n  ") + "\n");
@@ -378,6 +403,47 @@ async function main(): Promise<void> {
         printInfo(agent.performUndo() + "\n");
       } else if (cmd === "redo") {
         printInfo(agent.performRedo() + "\n");
+      } else if (cmd === "map") {
+        printInfo(buildRepoMap(cwd) + "\n");
+      } else if (cmd === "files") {
+        if (arg.toLowerCase() === "clear") {
+          agent.fileContext.clear();
+          printInfo("context files cleared.\n");
+        } else {
+          const pinned = agent.fileContext.list();
+          printInfo(
+            pinned.length
+              ? "pinned context:\n  " + pinned.join("\n  ") + "\n"
+              : "no files pinned — use /add <path> or mention @path inline.\n",
+          );
+        }
+      } else if (cmd === "add" || cmd === "add-dir") {
+        if (!arg) printError(`usage: /${cmd} <path>`);
+        else printInfo(agent.fileContext.add(arg) + "\n");
+      } else if (cmd === "drop") {
+        if (!arg) printError("usage: /drop <path>");
+        else printInfo(agent.fileContext.drop(arg) + "\n");
+      } else if (cmd === "memory") {
+        const sub = arg.split(/\s+/);
+        if (sub[0]?.toLowerCase() === "forget" && sub[1]) {
+          printInfo((forget(sub[1]) ? `forgot note ${sub[1]}` : `no note with id ${sub[1]}`) + "\n");
+        } else {
+          const notes = allNotes();
+          printInfo(
+            notes.length
+              ? `long-term memory — ${notes.length} note(s):\n` +
+                  notes
+                    .map((n) => `  ${c.dim(n.id)}  [${n.ts.slice(0, 10)}] ${n.text}`)
+                    .join("\n") +
+                  "\n"
+              : "long-term memory is empty.\n",
+          );
+        }
+      } else if (cmd === "init") {
+        printInfo(initProjectMemory(cwd) + "\n");
+      } else if (cmd === "reload") {
+        agent.reloadContext();
+        printInfo("project memory reloaded into context.\n");
       } else {
         printError(`unknown command "${input}". Try /help.`);
       }

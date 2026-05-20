@@ -76,6 +76,7 @@ defaults and is gitignored.
 | `numCtx`       | Context window in tokens to request from Ollama. |
 | `think`        | Enable the model's native reasoning trace. |
 | `allowedPaths` | **The sandbox.** List of directories the agent may touch. Relative paths resolve from the project root. |
+| `readOnlyPaths`| Reference directories the agent may **read** but never modify. |
 | `autoApprove`  | Per-risk-tier auto-approval: `read` / `write` / `shell`. |
 | `maxSteps`     | Safety cap on tool-call iterations per request. |
 | `rag`          | `enabled` / `command` / `defaultK` — semantic search over a RAG store via the `rag` CLI. Set `enabled: false` to hide the `search_docs` tool. |
@@ -163,8 +164,14 @@ Inside the REPL:
 | `/models` | list installed Ollama models |
 | `/compact` | summarise older turns to reclaim context space |
 | `/context` | show context-window usage as a meter |
-| `/undo` | revert the last file change |
-| `/redo` | re-apply the last reverted change |
+| `/undo` / `/redo` | revert / re-apply the last file change |
+| `/map` | print a structural map of the project |
+| `/files` | list pinned context files (`/files clear` to empty) |
+| `/add <path>` / `/add-dir <path>` | pin a file or directory into every prompt |
+| `/drop <path>` | unpin a file or directory |
+| `/memory` | list long-term memory (`/memory forget <id>`) |
+| `/init` | create a starter `PRETZEL.md` project-memory file |
+| `/reload` | reload `PRETZEL.md` into context |
 | `/reset` | clear the conversation history |
 | `/paths` | show the sandboxed root directories |
 | `/exit` | quit (Ctrl-C also works) |
@@ -192,6 +199,27 @@ The conversation **auto-compacts** at ~80% of `numCtx`: older turns are
 summarised by the model so a long session never silently drops history. Run
 `/compact` to do it on demand.
 
+## Project context
+
+Pretzel Porter helps a small local model understand a project without burning
+the context window:
+
+- **`PRETZEL.md`** — a short briefing file loaded into the system prompt every
+  session. `/init` writes a starter; keep one in a project directory, and/or a
+  global one at `~/.pretzel-porter/PRETZEL.md` for cross-project preferences.
+- **`@file` mentions** — write `@path/to/file` in a message and that file is
+  attached to the prompt for that turn.
+- **Pinned files** — `/add` a file or directory to attach it to *every* turn;
+  `/files` lists them, `/drop` removes one.
+- **Repo map** — `/map` (or the `repo_map` tool) prints a ranked outline of
+  every source file's functions, classes, and types — dependency-free, so it
+  works on any project.
+- **Long-term memory** — the `remember` / `recall` tools let the agent keep
+  durable notes in `~/.pretzel-porter/memory/` across sessions; `/memory`
+  inspects them.
+- **Read-only reference paths** — list directories under `readOnlyPaths` in the
+  config and the agent can read them but never modify them.
+
 ## Architecture
 
 ```
@@ -200,15 +228,19 @@ src/
   config.ts       loads + validates agent.config.json
   provider.ts     OllamaProvider — streaming, swappable backend (see below)
   agent.ts        the think → call tools → observe loop; compaction
-  permissions.ts  the directory sandbox
+  permissions.ts  the directory sandbox (read/write + read-only roots)
   autonomy.ts     the Shift-Tab autonomous-mode toggle
   diff.ts         dependency-free unified diff for write previews
   undo.ts         in-session file snapshots for /undo and /redo
+  context.ts      pinned files + @mention expansion
+  projectMemory.ts  PRETZEL.md loading + /init
+  repomap.ts      dependency-free project symbol outline
+  memory.ts       persistent long-term notes store
   state.ts        persistent trust list + last model (~/.pretzel-porter)
   ssh.ts          SSH tunnel manager for a remote Ollama
   ui.ts           terminal rendering, streaming, prompts, history, completion
   tools/          read_file, write_file, edit_file, list_dir, grep,
-                  run_shell, search_docs (RAG)
+                  run_shell, search_docs (RAG), repo_map, remember, recall
 ```
 
 The `Provider` interface (`src/types.ts`) is backend-agnostic. Today only

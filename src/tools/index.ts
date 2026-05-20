@@ -6,6 +6,8 @@ import { listDirTool } from "./listDir.js";
 import { grepTool } from "./grep.js";
 import { runShellTool } from "./runShell.js";
 import { searchDocsTool } from "./searchDocs.js";
+import { repoMapTool } from "./repoMap.js";
+import { rememberTool, recallTool } from "./memory.js";
 
 export interface ToolRegistry {
   schemas: ToolSchema[];
@@ -18,7 +20,7 @@ export interface ToolRegistry {
  * RAG is enabled, so the model never sees a tool it cannot use.
  */
 export function buildToolRegistry(cfg: AgentConfig): ToolRegistry {
-  const tools: Tool[] = [readFileTool, listDirTool, grepTool];
+  const tools: Tool[] = [readFileTool, listDirTool, grepTool, repoMapTool, rememberTool, recallTool];
   if (cfg.rag.enabled) tools.push(searchDocsTool);
   tools.push(editFileTool, writeFileTool, runShellTool);
 

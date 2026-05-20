@@ -11,6 +11,7 @@
   "requestTimeoutMs": 300000,
 
   "allowedPaths": [],
+  "readOnlyPaths": [],
 
   "autoApprove": {
     "read": true,

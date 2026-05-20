@@ -11,6 +11,8 @@ import type { Permissions } from "./permissions.js";
 import { buildToolRegistry, type ToolRegistry } from "./tools/index.js";
 import { autonomy } from "./autonomy.js";
 import { UndoStore } from "./undo.js";
+import { FileContext } from "./context.js";
+import { loadProjectMemory } from "./projectMemory.js";
 import {
   c,
   confirm,
@@ -24,16 +26,29 @@ import {
   stopSpinner,
 } from "./ui.js";
 
-function systemPrompt(roots: string[], ragEnabled: boolean): string {
+function systemPrompt(
+  roots: string[],
+  readOnlyRoots: string[],
+  ragEnabled: boolean,
+  projectMemory: string,
+): string {
   return [
     "You are Pretzel Porter, a private assistant that runs entirely on the user's",
     "own machine. Nothing the user shares leaves this computer — that is the point",
     "of the tool. The user relies on you for sensitive material such as their",
     "investment portfolio and personal finances.",
     "",
-    "You have tools to read, search, edit, write, and list files, and to run shell",
-    "commands. You can only touch paths inside this sandbox:",
+    "You have tools to read, search, edit, write, and list files, to map the",
+    "project structure (repo_map), to run shell commands, and to keep long-term",
+    "memory (remember / recall). You can read and write paths inside this sandbox:",
     ...roots.map((r) => `  - ${r}`),
+    ...(readOnlyRoots.length
+      ? [
+          "",
+          "These reference paths are read-only — you may read them but not modify them:",
+          ...readOnlyRoots.map((r) => `  - ${r}`),
+        ]
+      : []),
     "",
     ...(ragEnabled
       ? [
@@ -46,14 +61,27 @@ function systemPrompt(roots: string[], ragEnabled: boolean): string {
       : []),
     "Working rules:",
     "- Use tools to get facts. Never invent file contents or numbers.",
+    "- For an unfamiliar codebase, call repo_map first to orient yourself.",
     "- Always read a file before editing it, so edits match the real text.",
     "- Prefer edit_file for small changes; use write_file to create or fully replace.",
     "- Be cautious: write and shell actions ask the user for approval. If a request",
     "  is destructive or ambiguous, explain the risk before acting.",
+    "- Use remember to save durable facts worth keeping across sessions; use recall",
+    "  to retrieve them. Never store secrets.",
+    "- A turn may include an [Attached files for context] block — treat those files",
+    "  as already read; do not re-read them with a tool.",
     "- Think step by step, then take one or more tool actions, observe results, and",
     "  continue until the task is done.",
     "- When finished, give a short, direct answer. For financial questions, show the",
     "  numbers and how you derived them.",
+    ...(projectMemory
+      ? [
+          "",
+          "──────────── Project memory (loaded from PRETZEL.md) ────────────",
+          projectMemory,
+          "─────────────────────────────────────────────────────────────────",
+        ]
+      : []),
   ].join("\n");
 }
 
@@ -69,6 +97,8 @@ export class Agent {
   private readonly tools: ToolRegistry;
   /** In-session file snapshots powering /undo and /redo. */
   readonly undo = new UndoStore();
+  /** Files and directories pinned into every turn (+ @mention expansion). */
+  readonly fileContext: FileContext;
 
   private controller: AbortController | null = null;
   private _running = false;
@@ -78,11 +108,8 @@ export class Agent {
   constructor(
     private readonly cfg: AgentConfig,
     private readonly provider: Provider,
-    permissions: Permissions,
+    private readonly permissions: Permissions,
   ) {
-    this.messages = [
-      { role: "system", content: systemPrompt(permissions.roots(), cfg.rag.enabled) },
-    ];
     this.tools = buildToolRegistry(cfg);
     this.ctx = {
       permissions,
@@ -92,6 +119,22 @@ export class Agent {
       ragCommand: cfg.rag.command,
       ragDefaultK: cfg.rag.defaultK,
     };
+    this.fileContext = new FileContext(permissions);
+    this.messages = [{ role: "system", content: this.buildSystemPrompt() }];
+  }
+
+  private buildSystemPrompt(): string {
+    return systemPrompt(
+      this.permissions.roots(),
+      this.permissions.readOnlyRoots(),
+      this.cfg.rag.enabled,
+      loadProjectMemory(this.permissions.primaryRoot()),
+    );
+  }
+
+  /** Reload PRETZEL.md into the system prompt (after /init or an edit). */
+  reloadContext(): void {
+    this.messages[0] = { role: "system", content: this.buildSystemPrompt() };
   }
 
   /** Forget the conversation, keep the system prompt. */
@@ -140,7 +183,12 @@ export class Agent {
 
   /** Run one user turn to completion (final answer or step limit). */
   async run(userInput: string): Promise<void> {
-    this.messages.push({ role: "user", content: userInput });
+    // Pinned files and @mentions are attached ahead of the request itself.
+    const attached = this.fileContext.build(userInput);
+    const content = attached
+      ? `${attached}\n\n[User request]\n${userInput}`
+      : userInput;
+    this.messages.push({ role: "user", content });
     this.controller = new AbortController();
     this._running = true;
     this.autoCompactedThisTurn = false;

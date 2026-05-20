@@ -57,7 +57,7 @@ export const editFileTool: Tool = {
     return formatDiff(text, updated);
   },
   async run(args, ctx) {
-    const path = ctx.permissions.resolveWithin(reqString(args, "path"));
+    const path = ctx.permissions.resolveWithin(reqString(args, "path"), true);
     const oldStr = reqString(args, "old_string");
     const newStr = typeof args.new_string === "string" ? args.new_string : "";
     const replaceAll = optBool(args, "replace_all", false);
