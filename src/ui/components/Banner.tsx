@@ -29,8 +29,10 @@ interface BannerProps {
 }
 
 export function Banner({ version, model, rag, sandbox }: BannerProps) {
+  const shownSandbox = sandbox.length > 46 ? "…" + sandbox.slice(-45) : sandbox;
   return (
-    <Box flexDirection="column" borderStyle="round" paddingX={1}>
+    // alignSelf flex-start — hug the content instead of stretching full-width.
+    <Box flexDirection="column" borderStyle="round" paddingX={1} alignSelf="flex-start">
       <Text>
         <Text bold color="yellow">
           Pretzel Porter
@@ -73,7 +75,7 @@ export function Banner({ version, model, rag, sandbox }: BannerProps) {
           </Text>
           <Text>
             <Text dimColor>sandbox </Text>
-            {sandbox}
+            {shownSandbox}
           </Text>
         </Box>
       </Box>
