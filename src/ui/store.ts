@@ -22,11 +22,24 @@ export type ConvItem =
   | { id: number; kind: "diff"; text: string }
   | { id: number; kind: "tool"; name: string; summary: string; ok: boolean | null; preview: string };
 
+export type ConfirmAnswer = "yes" | "no" | "always";
+
+interface PendingConfirm {
+  question: string;
+  resolve: (answer: ConfirmAnswer) => void;
+}
+
 class UiStore {
   items: ConvItem[] = [];
   status: StatusInfo = { model: "", backend: "local", cwd: "", ctxPct: 0, modes: [] };
   streamThinking = "";
   streamContent = "";
+  /** True while a turn is generating. */
+  busy = false;
+  /** A transient sub-status line ("compacting", …); "" when idle. */
+  note = "";
+  /** A pending confirmation the UI must render and answer. */
+  pendingConfirm: PendingConfirm | null = null;
   version = 0;
 
   private listeners = new Set<() => void>();
@@ -53,6 +66,14 @@ class UiStore {
 
   setStatus(s: StatusInfo): void {
     this.status = s;
+    this.bump();
+  }
+  setBusy(b: boolean): void {
+    this.busy = b;
+    this.bump();
+  }
+  setNote(n: string): void {
+    this.note = n;
     this.bump();
   }
 
@@ -112,6 +133,21 @@ class UiStore {
       it.preview = preview;
     }
     this.bump();
+  }
+
+  // ── Confirmation prompts ─────────────────────────────────────────────
+  /** Ask the operator a tool-approval question; resolves when they answer. */
+  askConfirm(question: string): Promise<ConfirmAnswer> {
+    return new Promise((resolve) => {
+      this.pendingConfirm = { question, resolve };
+      this.bump();
+    });
+  }
+  answerConfirm(answer: ConfirmAnswer): void {
+    const pending = this.pendingConfirm;
+    this.pendingConfirm = null;
+    this.bump();
+    if (pending) pending.resolve(answer);
   }
 }
 

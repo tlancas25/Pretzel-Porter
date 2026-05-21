@@ -35,7 +35,7 @@ import {
   printToolResult,
   startSpinner,
   stopSpinner,
-} from "./ui.js";
+} from "./ui/bridge.js";
 
 /** Image file extensions attached to a turn as input for a vision model. */
 const IMAGE_RE = /\.(png|jpe?g|gif|webp|bmp)$/i;

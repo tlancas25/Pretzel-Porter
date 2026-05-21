@@ -35,8 +35,8 @@ const { waitUntilExit } = render(
     model="huihui_ai/gemma-4-abliterated:26b"
     rag={true}
     history={history}
-    busy={false}
     onSubmit={onSubmit}
+    onToggleAutonomous={() => {}}
     onCancel={() => {}}
   />,
 );
