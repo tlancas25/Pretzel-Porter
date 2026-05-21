@@ -173,8 +173,13 @@ function setScrollRegion(): void {
   process.stdout.write(`\x1b[1;${Math.max(1, rows - 2)}r`);
 }
 
+/** Clear the screen and home the cursor — used for a clean start. */
+export function clearScreen(): void {
+  if (isTTY()) process.stdout.write("\x1b[2J\x1b[H");
+}
+
 /** Truncate a (possibly coloured) string to a visible width. */
-function clip(s: string, width: number): string {
+export function clipWidth(s: string, width: number): string {
   if (visibleWidth(s) <= width) return s;
   let out = "";
   let w = 0;
@@ -201,9 +206,9 @@ export function drawBottomBar(): void {
   const { status, hint } = statusProvider();
   process.stdout.write("\x1b7"); // save cursor
   process.stdout.write(`\x1b[${rows - 1};1H\x1b[2K`);
-  process.stdout.write(GUTTER + clip(status, inner));
+  process.stdout.write(GUTTER + clipWidth(status, inner));
   process.stdout.write(`\x1b[${rows};1H\x1b[2K`);
-  process.stdout.write(GUTTER + clip(hint, inner));
+  process.stdout.write(GUTTER + clipWidth(hint, inner));
   process.stdout.write("\x1b8"); // restore cursor
 }
 
@@ -218,6 +223,7 @@ export function enableCanvas(): void {
   if (canvasOn || !isTTY()) return;
   canvasOn = true;
   setScrollRegion();
+  clearScreen(); // clean slate — wipe the start-up picker chatter before the banner
   drawBottomBar();
   barTimer = setInterval(drawBottomBar, 1000);
   process.stdout.on("resize", handleResize);
