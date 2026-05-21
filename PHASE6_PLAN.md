@@ -140,5 +140,10 @@ Everything else (6.1, 6.2, 6.5, 6.7–6.9) is verifiable from piped runs.
 
 ## Status
 
-Drafted at the operator's request after the v1.2.0 enhancement roadmap
-completed. Awaiting review before implementation begins.
+**Complete — all nine items shipped (2026-05-21).** Built zero-dependency, as
+specified. New module: `src/canvas.ts` (layout primitives + the pinned bar).
+
+Note: items **6.3 / 6.4** (the scroll-region bottom bar and resize handling)
+could not be verified from the build environment — they need a live
+interactive terminal. They are built, typechecked, and degrade to a no-op on
+a non-TTY; an interactive check is the one outstanding item.
