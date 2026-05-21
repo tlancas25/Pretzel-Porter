@@ -23,6 +23,7 @@ import {
   closeRl,
   confirm,
   EOF,
+  meterBar,
   onEscape,
   onShiftTab,
   printError,
@@ -422,20 +423,21 @@ async function main(): Promise<void> {
   const statusLine = (): string => {
     const { pct } = agent.contextUsage();
     const pctRound = Math.min(999, Math.round(pct * 100));
-    const ctxColor = pctRound >= 95 ? c.red : pctRound >= 80 ? c.yellow : c.dim;
-    const model = cfg.model.length > 30 ? cfg.model.slice(0, 29) + "…" : cfg.model;
-    const sep = c.dim(" · ");
-    let line =
-      c.dim(model) +
-      sep +
-      c.dim(backendLabel) +
-      sep +
-      ctxColor(`ctx ${pctRound}%`) +
-      sep +
-      c.dim(tildeify(cwd));
-    if (planMode.active) line += sep + c.blue("plan mode");
-    if (airgap.enabled) line += sep + c.green("air-gapped");
-    if (autonomy.enabled) line += sep + c.yellow("⚡ autonomous");
+    const ctxColor = pctRound >= 95 ? c.red : pctRound >= 80 ? c.yellow : c.green;
+    const model = cfg.model.length > 28 ? cfg.model.slice(0, 27) + "…" : cfg.model;
+    const sep = c.dim("  ·  ");
+    const segments = [
+      `${c.cyan("▸")} ${c.bold(model)}`,
+      c.dim(backendLabel),
+      `${ctxColor(meterBar(pct))} ${ctxColor(`${pctRound}%`)}`,
+      c.dim(tildeify(cwd)),
+    ];
+    const modes: string[] = [];
+    if (planMode.active) modes.push(c.blue("plan"));
+    if (airgap.enabled) modes.push(c.green("air-gapped"));
+    if (autonomy.enabled) modes.push(c.yellow("⚡ autonomous"));
+    let line = segments.join(sep);
+    if (modes.length > 0) line += sep + modes.join(" ");
     return line;
   };
 
@@ -483,12 +485,9 @@ async function main(): Promise<void> {
         printInfo((await agent.compact("manual")) + "\n");
       } else if (cmd === "context") {
         const { tokens, pct } = agent.contextUsage();
-        const barLen = 24;
-        const filled = Math.max(0, Math.min(barLen, Math.round(pct * barLen)));
-        const bar = "█".repeat(filled) + "░".repeat(barLen - filled);
         printInfo(
           `context: ${tokens} / ${cfg.numCtx} tokens (${Math.round(pct * 100)}%)\n` +
-            `  ${bar}\n`,
+            `  ${meterBar(pct, 24)}\n`,
         );
       } else if (cmd === "undo") {
         printInfo(agent.performUndo() + "\n");
