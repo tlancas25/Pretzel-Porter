@@ -41,7 +41,7 @@ import { airgap } from "./airgap.js";
 import { setAudit, AUDIT_FILE } from "./audit.js";
 import { newSessionId, saveSession, loadSession, listSessions } from "./session.js";
 import { readPortMem } from "./portmem.js";
-import { enableCanvas, disableCanvas, setStatusProvider } from "./canvas.js";
+import { GUTTER, enableCanvas, disableCanvas, setStatusProvider } from "./canvas.js";
 import type { AgentConfig, Provider } from "./types.js";
 
 const HELP = `
@@ -274,13 +274,13 @@ function completePath(token: string, base: string): string[] {
 /** Read one user message, supporting multi-line input via a trailing backslash. */
 async function readUserInput(): Promise<string> {
   let acc = "";
-  let prompt = c.cyan("you ▸ ");
+  let prompt = GUTTER + c.cyan("you ▸ ");
   for (;;) {
     const line = await ask(prompt);
     if (line === EOF) return EOF;
     if (line.endsWith("\\")) {
       acc += line.slice(0, -1) + "\n";
-      prompt = c.cyan("   ┄ ");
+      prompt = GUTTER + c.cyan(" ┄ ");
       continue;
     }
     return acc + line;
