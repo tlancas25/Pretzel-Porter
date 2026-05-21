@@ -23,6 +23,7 @@ import { PermissionRules } from "./rules.js";
 import { audit } from "./audit.js";
 import { validateArgs } from "./validate.js";
 import { resolveToolName, repairArgs } from "./repair.js";
+import { workspaceTree } from "./workspace.js";
 import {
   c,
   confirmToolUse,
@@ -42,6 +43,7 @@ const IMAGE_RE = /\.(png|jpe?g|gif|webp|bmp)$/i;
 function systemPrompt(
   roots: string[],
   readOnlyRoots: string[],
+  workspace: string,
   ragEnabled: boolean,
   projectMemory: string,
   workingMemory: string,
@@ -65,6 +67,14 @@ function systemPrompt(
           ...readOnlyRoots.map((r) => `  - ${r}`),
         ]
       : []),
+    "",
+    "Workspace layout — the primary sandbox root exactly as it is right now:",
+    "",
+    workspace,
+    "",
+    "Use this tree. Do not guess paths and do not assume the root directory is",
+    "all there is — what you need is often inside a subdirectory. It tells you",
+    "what already exists; still read a file before you edit it.",
     "",
     ...(ragEnabled
       ? [
@@ -91,6 +101,12 @@ function systemPrompt(
     "  command, pass a generous `timeout` (seconds) to run_shell — e.g. 600 for",
     "  an nmap service scan over many hosts — or use run_background and poll",
     "  job_status. Do not let a long scan die on the default timeout.",
+    "- A finding must be grounded in evidence. Before you state a conclusion —",
+    "  a vulnerability, a clean result, a fact about the target — point to the",
+    "  specific tool output or file content that shows it. Never conclude from",
+    "  a summary or an assumption; if you have not verified it, say so and",
+    "  verify. In security work a false positive and a false negative each",
+    "  carry real cost — do not guess to look finished.",
     "- Move in concrete steps: think briefly, take ONE clear action, look at the",
     "  result, decide the next. If unsure, take a small step to find out (read,",
     "  list, grep) — never speculate in circles or re-reason the same point.",
@@ -224,6 +240,7 @@ export class Agent {
     return systemPrompt(
       this.permissions.roots(),
       this.permissions.readOnlyRoots(),
+      workspaceTree(this.permissions.primaryRoot()),
       this.cfg.rag.enabled,
       loadProjectMemory(this.permissions.primaryRoot()),
       this.cfg.portMem ? loadPortMem(this.permissions.primaryRoot()) : "",
