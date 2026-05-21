@@ -41,6 +41,7 @@ import { airgap } from "./airgap.js";
 import { setAudit, AUDIT_FILE } from "./audit.js";
 import { newSessionId, saveSession, loadSession, listSessions } from "./session.js";
 import { readPortMem } from "./portmem.js";
+import { enableCanvas, disableCanvas, setStatusProvider } from "./canvas.js";
 import type { AgentConfig, Provider } from "./types.js";
 
 const HELP = `
@@ -134,6 +135,7 @@ function orExit<T>(fn: () => T): T {
 let mcpClients: McpClient[] = [];
 
 function cleanup(): void {
+  disableCanvas();
   killAllJobs();
   for (const client of mcpClients) client.close();
   closeTunnel();
@@ -369,6 +371,32 @@ async function main(): Promise<void> {
   const agent = new Agent(cfg, provider, permissions, mcpTools);
   const customCommands = loadCustomCommands();
   let sessionId = newSessionId();
+
+  // The pinned bottom bar: a live status line plus a fixed hint line.
+  const statusLine = (): string => {
+    const { pct } = agent.contextUsage();
+    const pctRound = Math.min(999, Math.round(pct * 100));
+    const ctxColor = pctRound >= 95 ? c.red : pctRound >= 80 ? c.yellow : c.green;
+    const model = cfg.model.length > 28 ? cfg.model.slice(0, 27) + "…" : cfg.model;
+    const sep = c.dim("  ·  ");
+    const segments = [
+      `${c.cyan("▸")} ${c.bold(model)}`,
+      c.dim(backendLabel),
+      `${ctxColor(meterBar(pct))} ${ctxColor(`${pctRound}%`)}`,
+      c.dim(tildeify(cwd)),
+    ];
+    const modes: string[] = [];
+    if (planMode.active) modes.push(c.blue("plan"));
+    if (airgap.enabled) modes.push(c.green("air-gapped"));
+    if (autonomy.enabled) modes.push(c.yellow("⚡ autonomous"));
+    let line = segments.join(sep);
+    if (modes.length > 0) line += sep + modes.join(" ");
+    return line;
+  };
+  const HINT = c.dim("Shift-Tab autonomous  ·  Esc stop  ·  Tab complete  ·  @file  ·  /help");
+  setStatusProvider(() => ({ status: statusLine(), hint: HINT }));
+  enableCanvas();
+
   banner(cfg.model, permissions.roots(), cfg.rag.enabled);
 
   // Warn if the chosen model can't use tools — it will be chat-only.
@@ -419,30 +447,7 @@ async function main(): Promise<void> {
     process.exit(0);
   });
 
-  /** The dim status line shown above each prompt. */
-  const statusLine = (): string => {
-    const { pct } = agent.contextUsage();
-    const pctRound = Math.min(999, Math.round(pct * 100));
-    const ctxColor = pctRound >= 95 ? c.red : pctRound >= 80 ? c.yellow : c.green;
-    const model = cfg.model.length > 28 ? cfg.model.slice(0, 27) + "…" : cfg.model;
-    const sep = c.dim("  ·  ");
-    const segments = [
-      `${c.cyan("▸")} ${c.bold(model)}`,
-      c.dim(backendLabel),
-      `${ctxColor(meterBar(pct))} ${ctxColor(`${pctRound}%`)}`,
-      c.dim(tildeify(cwd)),
-    ];
-    const modes: string[] = [];
-    if (planMode.active) modes.push(c.blue("plan"));
-    if (airgap.enabled) modes.push(c.green("air-gapped"));
-    if (autonomy.enabled) modes.push(c.yellow("⚡ autonomous"));
-    let line = segments.join(sep);
-    if (modes.length > 0) line += sep + modes.join(" ");
-    return line;
-  };
-
   for (;;) {
-    console.log(statusLine());
     const raw = await readUserInput();
     if (raw === EOF) break;
     const input = raw.trim();
