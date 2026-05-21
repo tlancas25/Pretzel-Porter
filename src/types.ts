@@ -97,6 +97,8 @@ export interface AgentConfig {
   autoCommit: boolean;
   temperature: number;
   numCtx: number;
+  /** Sampling controls — chiefly to suppress degenerate repetition loops. */
+  sampling: SamplingConfig;
   think: boolean;
   maxSteps: number;
   shellTimeoutMs: number;
@@ -129,6 +131,18 @@ export interface AgentConfig {
   mcpServers: Record<string, McpServerConfig>;
   /** Lifecycle hooks — shell commands run at defined points. */
   hooks: Partial<Record<HookEvent, HookSpec[]>>;
+}
+
+/** Token-sampling controls passed through to Ollama's `options`. */
+export interface SamplingConfig {
+  topP: number;
+  topK: number;
+  /** Tail cutoff; trims unlikely tokens. */
+  minP: number;
+  /** Penalty on repeated tokens — >1 discourages loops; ~1.3 is firm. */
+  repeatPenalty: number;
+  /** How many recent tokens the repeat penalty considers. */
+  repeatLastN: number;
 }
 
 /** A configured permission rule — see src/rules.ts. */

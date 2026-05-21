@@ -16,8 +16,15 @@ const DEFAULTS: AgentConfig = {
   model: "huihui_ai/gemma-4-abliterated:e2b",
   plannerModel: "",
   autoCommit: false,
-  temperature: 0.4,
+  temperature: 0.7,
   numCtx: 16384,
+  sampling: {
+    topP: 0.9,
+    topK: 40,
+    minP: 0.05,
+    repeatPenalty: 1.3,
+    repeatLastN: 256,
+  },
   think: true,
   maxSteps: 25,
   shellTimeoutMs: 30000,
@@ -86,6 +93,9 @@ export function loadConfig(): AgentConfig {
     if ((parsed as any).autoApprove) {
       merged.autoApprove = { ...DEFAULTS.autoApprove, ...(parsed as any).autoApprove };
     }
+    if ((parsed as any).sampling) {
+      merged.sampling = { ...DEFAULTS.sampling, ...(parsed as any).sampling };
+    }
     if ((parsed as any).rag) {
       merged.rag = { ...DEFAULTS.rag, ...(parsed as any).rag };
     }
@@ -107,6 +117,7 @@ export function loadConfig(): AgentConfig {
   if (typeof cfg.model !== "string" || !cfg.model) fail("model must be a non-empty string");
   if (typeof cfg.plannerModel !== "string") fail("plannerModel must be a string");
   if (typeof cfg.autoCommit !== "boolean") fail("autoCommit must be true/false");
+  if (typeof cfg.sampling !== "object" || cfg.sampling === null) fail("sampling must be an object");
   if (!Array.isArray(cfg.allowedPaths)) fail("allowedPaths must be an array");
   if (!Array.isArray(cfg.readOnlyPaths)) fail("readOnlyPaths must be an array");
   if (typeof cfg.airgap !== "boolean") fail("airgap must be true/false");

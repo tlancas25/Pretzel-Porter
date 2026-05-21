@@ -76,7 +76,8 @@ defaults and is gitignored.
 | `model`        | Ollama model tag. |
 | `plannerModel` | Optional second model used while in plan mode. |
 | `autoCommit`   | Commit every successful AI file change to git automatically. |
-| `temperature`  | Lower = more reliable tool use. `0.4` is a good default. |
+| `temperature`  | Sampling temperature. `0.7` balances focus against repetition. |
+| `sampling`     | `topP`/`topK`/`minP`/`repeatPenalty`/`repeatLastN` — `repeatPenalty` (~1.3) suppresses degenerate loops. |
 | `numCtx`       | Context window in tokens to request from Ollama. |
 | `think`        | Enable the model's native reasoning trace. |
 | `hideThinking` | Hide the reasoning trace from the display (it still runs). |

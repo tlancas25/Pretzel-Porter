@@ -380,10 +380,18 @@ export class Agent {
       startSpinner("thinking");
       const render = createStreamRenderer();
       let sawDelta = false;
+      // Safety net: if generation degenerates into a repetition loop, abort it.
+      let streamText = "";
+      let loopHit = false;
       const onDelta = (d: ChatDelta): void => {
         if (!sawDelta) {
           stopSpinner();
           sawDelta = true;
+        }
+        streamText += (d.thinking ?? "") + (d.content ?? "");
+        if (!loopHit && streamText.length > 1200 && isRepetitionLoop(streamText)) {
+          loopHit = true;
+          this.controller?.abort();
         }
         if (d.thinking && !this.cfg.hideThinking) render.thinking(d.thinking);
         if (d.content) render.content(d.content);
@@ -404,8 +412,15 @@ export class Agent {
         stopSpinner();
         render.end();
         const msg = (e as Error).message;
-        if (msg === "__ABORTED__" || signal.aborted) printInfo("  (cancelled)\n");
-        else printError(msg);
+        if (loopHit) {
+          printError(
+            "The model fell into a repetition loop — stopped it. Try /reset, then rephrase.",
+          );
+        } else if (msg === "__ABORTED__" || signal.aborted) {
+          printInfo("  (cancelled)\n");
+        } else {
+          printError(msg);
+        }
         return;
       }
       stopSpinner();
@@ -629,6 +644,26 @@ export class Agent {
     this.messages.push(...tail);
     return `Compacted ${older.length} messages — context now ~${this.estimateTokens()} tokens.`;
   }
+}
+
+/**
+ * Detect degenerate repetition: the same short chunk repeated many times near
+ * the end of a stream. A weak/abliterated model can lock into a loop ("…way to
+ * see if there's any way to…") and never stop on its own; this catches it so
+ * the agent can abort instead of running to the token limit.
+ */
+function isRepetitionLoop(text: string): boolean {
+  const tail = text.slice(-1000);
+  if (tail.length < 400) return false;
+  const probe = tail.slice(-64);
+  if (probe.trim().length < 24) return false;
+  let count = 0;
+  let idx = 0;
+  while ((idx = tail.indexOf(probe, idx)) !== -1) {
+    count++;
+    idx += probe.length;
+  }
+  return count >= 5;
 }
 
 /** Flatten a message into plain text for the compaction prompt. */

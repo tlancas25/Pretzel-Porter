@@ -101,6 +101,11 @@ export class OllamaProvider implements Provider {
       options: {
         temperature: this.cfg.temperature,
         num_ctx: this.cfg.numCtx,
+        top_p: this.cfg.sampling.topP,
+        top_k: this.cfg.sampling.topK,
+        min_p: this.cfg.sampling.minP,
+        repeat_penalty: this.cfg.sampling.repeatPenalty,
+        repeat_last_n: this.cfg.sampling.repeatLastN,
       },
     };
 
