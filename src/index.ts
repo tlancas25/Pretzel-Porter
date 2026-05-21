@@ -43,6 +43,7 @@ import { setAudit, AUDIT_FILE } from "./audit.js";
 import { newSessionId, saveSession, loadSession, listSessions } from "./session.js";
 import { readPortMem } from "./portmem.js";
 import { GUTTER, enableCanvas, disableCanvas, setStatusProvider } from "./canvas.js";
+import { VERSION } from "./version.js";
 import type { AgentConfig, Provider } from "./types.js";
 
 const HELP = `
@@ -296,6 +297,25 @@ function commandExists(cmd: string): Promise<boolean> {
 }
 
 async function main(): Promise<void> {
+  // CLI flags handled before anything else, so they work even if config is broken.
+  const args = process.argv.slice(2);
+  if (args.includes("--version") || args.includes("-v")) {
+    console.log(`Pretzel Porter v${VERSION}`);
+    process.exit(0);
+  }
+  if (args.includes("--help") || args.includes("-h")) {
+    console.log(
+      `Pretzel Porter v${VERSION} — a private local terminal agent\n\n` +
+        "Usage:\n" +
+        "  pport             run in the current directory\n" +
+        "  sudo pport        run as root (to reach root-owned files)\n" +
+        "  pport --version   print the version\n\n" +
+        "Inside the session, type /help for commands.\n" +
+        "To upgrade: from the cloned repo, ./install.sh --update",
+    );
+    process.exit(0);
+  }
+
   const cfg = orExit(loadConfig);
   setTheme(cfg.theme);
   airgap.set(cfg.airgap);

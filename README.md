@@ -14,7 +14,7 @@
 **Pretzel Porter** — a small, **fully local** terminal agent — like Claude
 Code, but it runs on any local LLM you have in Ollama and never sends anything
 off your machine. Built for working with sensitive files (portfolio, finances,
-personal docs) where privacy is the whole point. _v1.2.0_
+personal docs) where privacy is the whole point. _v1.3.0_
 
 It can **think**, **reason**, and **use tools** to read, search, edit, write,
 and run shell commands — all confined to a directory sandbox you control. With
@@ -52,9 +52,27 @@ git clone https://github.com/tlancas25/Pretzel-Porter.git && cd Pretzel-Porter &
 adds a launcher at `/usr/local/bin/pport`. Then, from any directory:
 
 ```bash
-pport          # work in the current directory
-sudo pport     # run as root, to reach root-owned files
+pport            # work in the current directory
+sudo pport       # run as root, to reach root-owned files
+pport --version  # print the installed version
 ```
+
+## Updating
+
+From the directory you cloned into, one command pulls the latest and
+rebuilds + reinstalls over the old copy:
+
+```bash
+cd Pretzel-Porter
+./install.sh --update
+```
+
+`--update` runs `git pull` first, then the normal build + install. Re-running
+`./install.sh` with no flag also reinstalls (handy after your own local
+changes). Either way, your per-user settings in `~/.pretzel-porter/` —
+including `agent.config.local.json` — are never touched; only the system copy
+in `/opt/pretzel-porter` is replaced. Check your version any time with
+`pport --version`.
 
 ## Development
 
