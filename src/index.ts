@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { realpathSync, readdirSync, statSync, readFileSync } from "node:fs";
+import { realpathSync, readdirSync, statSync, readFileSync, writeFileSync } from "node:fs";
 import { execFile } from "node:child_process";
 import { homedir } from "node:os";
 import { resolve, isAbsolute } from "node:path";
@@ -44,6 +44,7 @@ import { airgap } from "./airgap.js";
 import { setAudit, AUDIT_FILE } from "./audit.js";
 import { newSessionId, saveSession, loadSession, listSessions } from "./session.js";
 import { readPortMem } from "./portmem.js";
+import { sessionToMarkdown } from "./export.js";
 import { GUTTER, clearScreen } from "./canvas.js";
 import { VERSION } from "./version.js";
 import type { AgentConfig, Provider } from "./types.js";
@@ -70,6 +71,7 @@ ${c.bold("commands")}
   /jobs           list background jobs ( /jobs <id> for output )
   /resume [id]    resume a saved session ( interactive picker if no id )
   /sessions       list saved sessions
+  /export [path]  write this session to a Markdown report
   /rules          list permission rules ( /rules clear  resets learned )
   /airgap         toggle air-gap mode — disable all network tools
   /doctor         run diagnostics (Ollama, model, RAG, git)
@@ -703,6 +705,21 @@ async function main(): Promise<void> {
                 .join("\n")
             : "no saved sessions yet.") + "\n",
         );
+      } else if (cmd === "export") {
+        const fileName =
+          arg ||
+          `pport-session-${new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19)}.md`;
+        const dest = isAbsolute(fileName) ? fileName : resolve(cwd, fileName);
+        try {
+          writeFileSync(
+            dest,
+            sessionToMarkdown(agent.exportMessages(), { model: cfg.model, sandbox: cwd }),
+            "utf8",
+          );
+          printInfo(`session exported to ${dest}\n`);
+        } catch (e) {
+          printError(`export failed: ${(e as Error).message}`);
+        }
       } else if (cmd === "resume") {
         const sessions = listSessions();
         if (sessions.length === 0) {
