@@ -28,6 +28,7 @@ import {
   onShiftTab,
   printError,
   printInfo,
+  printTiming,
   rule,
   selectFromMenu,
   setCompleter,
@@ -275,14 +276,19 @@ function completePath(token: string, base: string): string[] {
 
 /** Read one user message, supporting multi-line input via a trailing backslash. */
 async function readUserInput(): Promise<string> {
+  // A dim full-width rule marks where the input area begins each turn.
+  if (process.stdout.isTTY) {
+    console.log();
+    console.log(GUTTER + rule());
+  }
   let acc = "";
-  let prompt = GUTTER + c.cyan("you ▸ ");
+  let prompt = GUTTER + c.cyan("❯ ");
   for (;;) {
     const line = await ask(prompt);
     if (line === EOF) return EOF;
     if (line.endsWith("\\")) {
       acc += line.slice(0, -1) + "\n";
-      prompt = GUTTER + c.cyan(" ┄ ");
+      prompt = GUTTER + c.dim("❯ ");
       continue;
     }
     return acc + line;
@@ -467,6 +473,14 @@ async function main(): Promise<void> {
     cleanup();
     process.exit(0);
   });
+
+  // Run one model turn, timing it and persisting the session afterwards.
+  const runTurn = async (text: string): Promise<void> => {
+    const started = Date.now();
+    await agent.run(text);
+    printTiming((Date.now() - started) / 1000);
+    saveSession(sessionId, agent.exportMessages());
+  };
 
   for (;;) {
     const raw = await readUserInput();
@@ -697,16 +711,14 @@ async function main(): Promise<void> {
           ].join("\n") + "\n",
         );
       } else if (customCommands.has(cmd)) {
-        await agent.run(expandCommand(customCommands.get(cmd)!, arg));
-        saveSession(sessionId, agent.exportMessages());
+        await runTurn(expandCommand(customCommands.get(cmd)!, arg));
       } else {
         printError(`unknown command "${input}". Try /help.`);
       }
       continue;
     }
 
-    await agent.run(input);
-    saveSession(sessionId, agent.exportMessages());
+    await runTurn(input);
   }
 
   console.log(c.dim("bye."));
