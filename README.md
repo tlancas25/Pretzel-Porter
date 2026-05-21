@@ -1,14 +1,14 @@
 # Pretzel Porter
 
 ```
-      _~~_   _~~_
-     (    \_/    )
-      \   / \   /
-       \ ( X ) /
-        \ \_/ /
-        /     \
-       (       )
-        \_____/
+
+                     .'  `'._.'`  '.
+                    |  .--;   ;--.  |
+                    |  (  /   \  )  |
+                     \  ;` /^\ `;  /
+                      :` .'._.'. `;
+                      '-`'.___.'`-'
+
 ```
 
 **Pretzel Porter** — a small, **fully local** terminal agent — like Claude
