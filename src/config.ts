@@ -29,7 +29,7 @@ const DEFAULTS: AgentConfig = {
   maxSteps: 25,
   shellTimeoutMs: 120000,
   maxReadBytes: 200000,
-  requestTimeoutMs: 300000,
+  requestTimeoutMs: 600000,
   allowedPaths: [],
   readOnlyPaths: [],
   autoApprove: { read: true, write: false, shell: false },
