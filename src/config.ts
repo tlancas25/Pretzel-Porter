@@ -27,7 +27,7 @@ const DEFAULTS: AgentConfig = {
   },
   think: true,
   maxSteps: 25,
-  shellTimeoutMs: 30000,
+  shellTimeoutMs: 120000,
   maxReadBytes: 200000,
   requestTimeoutMs: 300000,
   allowedPaths: [],
