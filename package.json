@@ -18,7 +18,12 @@
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^22.10.0",
+    "@types/react": "^19.2.15",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
+  },
+  "dependencies": {
+    "ink": "^7.0.3",
+    "react": "^19.2.6"
   }
 }
