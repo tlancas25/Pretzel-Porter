@@ -21,6 +21,7 @@ import { runHooks } from "./hooks.js";
 import { isGitRepo, gitDiff, gitCommitAll } from "./git.js";
 import { PermissionRules } from "./rules.js";
 import { audit } from "./audit.js";
+import { validateArgs } from "./validate.js";
 import {
   c,
   confirmToolUse,
@@ -468,6 +469,20 @@ export class Agent {
       summary = JSON.stringify(call.arguments);
     }
     printToolCall(call.name, summary);
+
+    // Validate the model's arguments against the tool schema before anything
+    // else — a precise correction lets a weak model self-fix on its next step.
+    const problems = validateArgs(tool.schema, call.arguments);
+    if (problems.length > 0) {
+      printToolResult(false, `invalid arguments — ${problems[0]}`);
+      return {
+        ok: false,
+        output:
+          `Invalid arguments for ${call.name}:\n` +
+          problems.map((p) => `  - ${p}`).join("\n") +
+          `\nCorrect the arguments and call ${call.name} again.`,
+      };
+    }
 
     // Plan mode is read-only: refuse anything that would change state.
     if (planMode.active && tool.risk !== "read") {

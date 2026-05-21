@@ -370,6 +370,7 @@ src/
   audit.ts        append-only audit log
   session.ts      JSON session persistence + /resume
   rules.ts        wildcard permission-rule engine
+  validate.ts     tool-call argument validation against the schema
   state.ts        persistent trust list + last model (~/.pretzel-porter)
   ssh.ts          SSH tunnel manager for a remote Ollama
   ui.ts           terminal rendering, streaming, prompts, history, completion
