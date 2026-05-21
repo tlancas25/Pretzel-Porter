@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import type { Tool } from "../types.js";
-import { reqString, optBool } from "./util.js";
+import { reqString, optBool, nearestMatch } from "./util.js";
 import { formatDiff } from "../diff.js";
 
 export const editFileTool: Tool = {
@@ -74,7 +74,16 @@ export const editFileTool: Tool = {
 
     const count = text.split(oldStr).length - 1;
     if (count === 0) {
-      return { ok: false, output: "old_string was not found in the file." };
+      const near = nearestMatch(text, oldStr);
+      return {
+        ok: false,
+        output:
+          "old_string was not found — it must match the file exactly, " +
+          "character for character." +
+          (near
+            ? `\n\nClosest region of the file — compare it against your old_string:\n${near}`
+            : ""),
+      };
     }
     if (count > 1 && !replaceAll) {
       return {

@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import type { Tool } from "../types.js";
-import { reqString } from "./util.js";
+import { reqString, nearestMatch } from "./util.js";
 import { formatDiff } from "../diff.js";
 
 // multi_edit applies a batch of exact-string edits to one file in a single,
@@ -39,7 +39,17 @@ function applyEdits(text: string, ops: EditOp[]): string | { error: string } {
   for (let i = 0; i < ops.length; i++) {
     const op = ops[i]!;
     const count = out.split(op.old_string).length - 1;
-    if (count === 0) return { error: `edit #${i + 1}: old_string was not found.` };
+    if (count === 0) {
+      const near = nearestMatch(out, op.old_string);
+      return {
+        error:
+          `edit #${i + 1}: old_string was not found — it must match the file ` +
+          `exactly, character for character.` +
+          (near
+            ? `\nClosest region of the file — compare it against your old_string:\n${near}`
+            : ""),
+      };
+    }
     if (count > 1 && !op.replace_all) {
       return {
         error: `edit #${i + 1}: old_string matches ${count} times — make it unique or set replace_all.`,

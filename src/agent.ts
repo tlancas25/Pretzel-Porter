@@ -174,6 +174,8 @@ export class Agent {
   private lastAnswer = "";
   /** Tool names executed during the current turn — for the portmem.md log. */
   private turnTools: string[] = [];
+  /** Per-turn count of identical tool-call signatures — for loop detection. */
+  private turnCallCounts = new Map<string, number>();
 
   constructor(
     private readonly cfg: AgentConfig,
@@ -374,6 +376,7 @@ export class Agent {
     });
     this.lastAnswer = "";
     this.turnTools = [];
+    this.turnCallCounts.clear();
     this.controller = new AbortController();
     this._running = true;
     this.autoCompactedThisTurn = false;
@@ -503,6 +506,26 @@ export class Agent {
       const out = `No tool named "${call.name}". Available tools: ${known}.`;
       printToolResult(false, out);
       return { ok: false, output: out };
+    }
+
+    // Loop guard: a weak model can call the same tool with the same arguments
+    // over and over when it fails. After a few identical calls, stop running
+    // it and push back hard so the model changes approach instead of looping.
+    const sig = `${call.name}:${JSON.stringify(call.arguments)}`;
+    const repeats = (this.turnCallCounts.get(sig) ?? 0) + 1;
+    this.turnCallCounts.set(sig, repeats);
+    if (repeats >= 3) {
+      printToolCall(call.name, "loop detected");
+      printToolResult(false, "loop detected — identical call repeated");
+      return {
+        ok: false,
+        output:
+          `Loop detected — you have called ${call.name} with these exact ` +
+          `arguments ${repeats} times this turn and it keeps failing the same ` +
+          `way. Stop repeating it. Re-read the file to get its exact current ` +
+          `text, or change approach entirely: different arguments, a different ` +
+          `tool, or tell the operator what is blocking you.`,
+      };
     }
 
     let summary: string;
