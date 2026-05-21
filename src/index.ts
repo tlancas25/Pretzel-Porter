@@ -28,6 +28,7 @@ import {
   onShiftTab,
   printError,
   printInfo,
+  rule,
   selectFromMenu,
   setCompleter,
   setTheme,
@@ -460,16 +461,17 @@ async function main(): Promise<void> {
 
       if (cmd === "exit" || cmd === "quit") break;
       else if (cmd === "help") {
-        printInfo(HELP);
+        printInfo(rule());
+        printInfo(HELP.trim());
         if (customCommands.size) {
           printInfo(
-            "custom commands (~/.pretzel-porter/commands/):\n" +
+            "\ncustom commands (~/.pretzel-porter/commands/):\n" +
               [...customCommands.values()]
                 .map((cc) => `  /${cc.name}  ${c.dim(cc.description)}`)
-                .join("\n") +
-              "\n",
+                .join("\n"),
           );
         }
+        printInfo(rule() + "\n");
       } else if (cmd === "reset") {
         agent.reset();
         printInfo("conversation cleared.\n");
