@@ -254,6 +254,21 @@ the context window:
   }
   ```
 
+- **Context Cooler** — the recommended MCP pairing. A local model has a small
+  context window, and reading many files or large logs into it directly is
+  what makes a task overflow. [Context Cooler](https://github.com/tlancas25/context-cooler)
+  inverts that: instead of pulling raw data into the model, the agent runs code
+  *against* the data in a sandbox and reads back only a compact summary, with
+  the full output indexed for later search. It ships a `pretzel-porter` install
+  adapter, so wiring it in is one command:
+
+  ```bash
+  python3 install.py --platform=pretzel-porter   # from a Context Cooler checkout
+  ```
+
+  That registers it in `~/.pretzel-porter/agent.config.local.json`; its
+  `ctx_execute` / `ctx_search` / `ctx_index` tools then join the registry.
+
 - **Custom slash commands** — drop a Markdown file in
   `~/.pretzel-porter/commands/`; `review.md` becomes `/review`. The file body
   is a prompt template — `$ARGS` is replaced with whatever you type after the
