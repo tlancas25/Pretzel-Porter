@@ -59,6 +59,9 @@ class UiStore {
   user(text: string): void {
     this.push({ id: this.nextId++, kind: "user", text });
   }
+  assistant(text: string): void {
+    this.push({ id: this.nextId++, kind: "assistant", text });
+  }
   info(text: string): void {
     this.push({ id: this.nextId++, kind: "info", text });
   }
