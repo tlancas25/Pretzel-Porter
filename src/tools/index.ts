@@ -4,6 +4,7 @@ import { writeFileTool } from "./writeFile.js";
 import { editFileTool } from "./editFile.js";
 import { listDirTool } from "./listDir.js";
 import { grepTool } from "./grep.js";
+import { globTool } from "./glob.js";
 import { runShellTool } from "./runShell.js";
 import { searchDocsTool } from "./searchDocs.js";
 import { repoMapTool } from "./repoMap.js";
@@ -32,6 +33,7 @@ export function buildToolRegistry(cfg: AgentConfig, extraTools: Tool[] = []): To
     readFileTool,
     listDirTool,
     grepTool,
+    globTool,
     repoMapTool,
     rememberTool,
     recallTool,

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { realpathSync, readdirSync, statSync } from "node:fs";
+import { realpathSync, readdirSync, statSync, readFileSync } from "node:fs";
 import { execFile } from "node:child_process";
 import { homedir } from "node:os";
 import { resolve, isAbsolute } from "node:path";
@@ -32,6 +32,7 @@ import {
   rule,
   selectFromMenu,
   setCompleter,
+  setQuiet,
   setTheme,
   startSpinner,
   stopSpinner,
@@ -302,6 +303,63 @@ function commandExists(cmd: string): Promise<boolean> {
   });
 }
 
+/**
+ * Headless mode (`pport -p "task"`): run one task non-interactively, stream the
+ * answer to stdout, and exit. For scripting and automation. Tool actions are
+ * auto-approved (it runs unattended) and the thinking trace is suppressed.
+ */
+async function runHeadless(promptArg: string): Promise<void> {
+  let prompt = promptArg;
+  if (!prompt && !process.stdin.isTTY) {
+    try {
+      prompt = readFileSync(0, "utf8").trim();
+    } catch {
+      // no stdin available
+    }
+  }
+  if (!prompt) {
+    console.error('pport -p: no task given — pass text after -p, or pipe it via stdin.');
+    process.exit(2);
+  }
+
+  setQuiet(true);
+  const cfg = orExit(loadConfig);
+  setTheme(cfg.theme);
+  airgap.set(cfg.airgap);
+  setAudit(cfg.auditLog);
+  cfg.hideThinking = true;
+  cfg.autoApprove = { read: true, write: true, shell: true }; // unattended
+  cfg.model = loadState().lastModel || cfg.model;
+  const cwd = realpathSync(process.cwd());
+
+  // Cloud is the daily driver — use it headless too when SSH is configured.
+  if (cfg.ssh.enabled) {
+    try {
+      cfg.baseUrl = await openTunnel(cfg.ssh);
+    } catch (e) {
+      console.error(`pport -p: ${(e as Error).message}`);
+      process.exit(1);
+    }
+  }
+  const provider = new OllamaProvider(cfg);
+  try {
+    await provider.healthCheck();
+  } catch (e) {
+    console.error(`pport -p: ${(e as Error).message}`);
+    closeTunnel();
+    process.exit(1);
+  }
+
+  const permissions = orExit(
+    () => new Permissions([cwd, ...cfg.allowedPaths], cwd, cfg.readOnlyPaths),
+  );
+  const agent = new Agent(cfg, provider, permissions, []);
+  await agent.run(prompt);
+  process.stdout.write("\n");
+  closeTunnel();
+  process.exit(agent.answer ? 0 : 1);
+}
+
 async function main(): Promise<void> {
   // CLI flags handled before anything else, so they work even if config is broken.
   const args = process.argv.slice(2);
@@ -313,13 +371,22 @@ async function main(): Promise<void> {
     console.log(
       `Pretzel Porter v${VERSION} — a private local terminal agent\n\n` +
         "Usage:\n" +
-        "  pport             run in the current directory\n" +
-        "  sudo pport        run as root (to reach root-owned files)\n" +
-        "  pport --version   print the version\n\n" +
+        "  pport               run interactively in the current directory\n" +
+        "  sudo pport          run as root (to reach root-owned files)\n" +
+        '  pport -p "task"     run one task headless, print the result, exit\n' +
+        "  echo task | pport -p   same, taking the task from stdin\n" +
+        "  pport --version     print the version\n\n" +
         "Inside the session, type /help for commands.\n" +
         "To upgrade: from the cloned repo, ./install.sh --update",
     );
     process.exit(0);
+  }
+
+  // Headless mode: run one task non-interactively and exit (for scripting).
+  const pIdx = args.findIndex((a) => a === "-p" || a === "--print");
+  if (pIdx !== -1) {
+    await runHeadless(args.slice(pIdx + 1).join(" ").trim());
+    return; // runHeadless always calls process.exit
   }
 
   const cfg = orExit(loadConfig);

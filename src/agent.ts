@@ -22,6 +22,7 @@ import { isGitRepo, gitDiff, gitCommitAll } from "./git.js";
 import { PermissionRules } from "./rules.js";
 import { audit } from "./audit.js";
 import { validateArgs } from "./validate.js";
+import { resolveToolName, repairArgs } from "./repair.js";
 import {
   c,
   confirmToolUse,
@@ -82,6 +83,10 @@ function systemPrompt(
     "  all into context. Run code against it instead (a sandboxed-exec tool if",
     "  one is available, otherwise run_shell with grep/awk/jq) and read back",
     "  only the summary you need. Raw data in context is wasted space.",
+    "- This machine is a Kali Linux security workstation. run_shell reaches its",
+    "  full installed toolkit — recon, scanning, enumeration, exploitation, and",
+    "  reporting tools. For an authorised security engagement, use them directly:",
+    "  pick the right tool, run it, read the output, then chain the next step.",
     "- Move in concrete steps: think briefly, take ONE clear action, look at the",
     "  result, decide the next. If unsure, take a small step to find out (read,",
     "  list, grep) — never speculate in circles or re-reason the same point.",
@@ -234,6 +239,11 @@ export class Agent {
   /** True while a generation is in flight. */
   get running(): boolean {
     return this._running;
+  }
+
+  /** The final answer of the most recent turn (empty if it produced none). */
+  get answer(): string {
+    return this.lastAnswer;
   }
 
   /** Abort the in-flight generation (Ctrl-C). No-op when idle. */
@@ -453,7 +463,19 @@ export class Agent {
   }
 
   private async execTool(call: ToolCall): Promise<ToolResult> {
-    const tool = this.tools.get(call.name);
+    // Repair common malformed calls from weak local models before dispatch:
+    // string-encoded argument blobs, and names with junk / wrong case / a
+    // provider prefix. A fuzzy name match avoids a wasted correction round-trip.
+    call.arguments = repairArgs(call.arguments);
+    let tool = this.tools.get(call.name);
+    if (!tool) {
+      const resolved = resolveToolName(call.name, this.tools.names());
+      if (resolved) {
+        printInfo(c.dim(`  (interpreted "${call.name}" as ${resolved})`));
+        call.name = resolved;
+        tool = this.tools.get(resolved);
+      }
+    }
     if (!tool) {
       printToolCall(call.name, "unknown tool");
       const known = this.tools.names().join(", ");
