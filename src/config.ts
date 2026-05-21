@@ -31,6 +31,7 @@ const DEFAULTS: AgentConfig = {
   auditLog: false,
   theme: "default",
   hideThinking: false,
+  portMem: false,
   mcpServers: {},
   hooks: {},
   rag: { enabled: true, command: "rag", defaultK: 5 },
@@ -111,6 +112,7 @@ export function loadConfig(): AgentConfig {
   if (typeof cfg.airgap !== "boolean") fail("airgap must be true/false");
   if (typeof cfg.auditLog !== "boolean") fail("auditLog must be true/false");
   if (typeof cfg.hideThinking !== "boolean") fail("hideThinking must be true/false");
+  if (typeof cfg.portMem !== "boolean") fail("portMem must be true/false");
   if (typeof cfg.theme !== "string") fail("theme must be a string");
   if (!Array.isArray(cfg.permissionRules)) fail("permissionRules must be an array");
   if (typeof cfg.mcpServers !== "object" || cfg.mcpServers === null) {

@@ -15,6 +15,7 @@
   "autoCommit": false,
   "airgap": false,
   "auditLog": false,
+  "portMem": false,
 
   "allowedPaths": [],
   "readOnlyPaths": [],

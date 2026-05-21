@@ -117,6 +117,12 @@ export interface AgentConfig {
   theme: string;
   /** When true, the model's reasoning trace is not displayed. */
   hideThinking: boolean;
+  /**
+   * When true, pport maintains portmem.md per directory and loads it into the
+   * system prompt on startup. Off by default — an auto-loaded, model-writable
+   * memory file can recycle a weak model's hallucinations back into context.
+   */
+  portMem: boolean;
   rag: RagConfig;
   ssh: SshConfig;
   /** MCP servers to connect to at startup; their tools join the registry. */

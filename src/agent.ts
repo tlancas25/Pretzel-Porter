@@ -202,7 +202,7 @@ export class Agent {
       this.permissions.readOnlyRoots(),
       this.cfg.rag.enabled,
       loadProjectMemory(this.permissions.primaryRoot()),
-      loadPortMem(this.permissions.primaryRoot()),
+      this.cfg.portMem ? loadPortMem(this.permissions.primaryRoot()) : "",
     );
   }
 
@@ -341,12 +341,15 @@ export class Agent {
     if (!this.isSubagent) {
       const stop = await runHooks("Stop", this.cfg.hooks.Stop, { prompt: userInput }, this.ctx.cwd);
       for (const line of stop.output) printInfo(c.dim(`  [hook] ${line}`));
-      // Record the turn in the directory's working memory (portmem.md).
-      appendPortMem(this.ctx.cwd, {
-        request: userInput,
-        tools: this.turnTools,
-        outcome: this.lastAnswer,
-      });
+      // Record the turn in the directory's working memory (portmem.md) —
+      // only when explicitly enabled (see AgentConfig.portMem).
+      if (this.cfg.portMem) {
+        appendPortMem(this.ctx.cwd, {
+          request: userInput,
+          tools: this.turnTools,
+          outcome: this.lastAnswer,
+        });
+      }
     }
   }
 
