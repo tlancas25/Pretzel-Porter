@@ -117,6 +117,11 @@ function systemPrompt(
     "  destructive or ambiguous, say so plainly first.",
     "- A turn may arrive with attached file contents already included — use",
     "  them; do not re-read those files.",
+    "- Do not announce a next step and then stop. If you say you will read,",
+    "  check, search, or run something, include that tool call in the SAME",
+    "  response. Ending a turn with no tool call hands control back to the",
+    "  operator — do that only when the task is complete or you are genuinely",
+    "  blocked, never just to narrate intent or to ask for permission you have.",
     "- Stop when the task is genuinely done. Do not continue for its own sake.",
     "",
     "How to respond:",
@@ -403,6 +408,7 @@ export class Agent {
   }
 
   private async loop(signal: AbortSignal): Promise<void> {
+    let autoContinues = 0;
     for (let step = 0; step < this.cfg.maxSteps; step++) {
       if (signal.aborted) return;
 
@@ -469,11 +475,29 @@ export class Agent {
       });
 
       if (resp.toolCalls.length === 0) {
-        if (resp.content.trim()) this.lastAnswer = resp.content.trim();
-        else printError("The model returned an empty response.");
+        const text = resp.content.trim();
+        if (text) this.lastAnswer = text;
+        // Autonomous mode: a weak model often narrates a next step and ends the
+        // turn instead of taking it. When it clearly intends to continue, nudge
+        // it on rather than handing control back — that is what autonomous means.
+        if (autonomy.enabled && autoContinues < 3 && looksUnfinished(text)) {
+          autoContinues++;
+          printInfo(c.dim("  ⚡ autonomous — continuing"));
+          this.messages.push({
+            role: "user",
+            content:
+              "Continue. You described a next step but did not take it — do it " +
+              "now by calling the tool. Autonomous mode is on; you already have " +
+              "approval. Stop only when the task is complete or you hit a real " +
+              "blocker — and if you are blocked, say so explicitly.",
+          });
+          continue;
+        }
+        if (!text) printError("The model returned an empty response.");
         return;
       }
 
+      autoContinues = 0; // a tool call ran — real progress was made
       for (const call of resp.toolCalls) {
         if (signal.aborted) return;
         const result = await this.execTool(call);
@@ -745,6 +769,20 @@ function isRepetitionLoop(text: string): boolean {
     idx += probe.length;
   }
   return count >= 5;
+}
+
+/**
+ * Heuristic: does this assistant message look like the model narrated a next
+ * step and then stopped, rather than actually finishing? Used to auto-continue
+ * in autonomous mode instead of handing control back for no reason.
+ */
+function looksUnfinished(text: string): boolean {
+  if (!text) return false;
+  // The "I'll go do X next" tell lands at the end of the message.
+  const tail = text.slice(-400).toLowerCase();
+  return /\b(i'?ll |i will |i'?m going to |let me |let's |next,? i|now i'?ll|i need to (find|check|look|search|locate|run|read|grep|inspect|examine|verify))/.test(
+    tail,
+  );
 }
 
 /** Flatten a message into plain text for the compaction prompt. */
