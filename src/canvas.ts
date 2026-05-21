@@ -153,27 +153,9 @@ export function createGutterStream(): GutterStream {
   };
 }
 
-// ── Pinned bottom information bar ───────────────────────────────────────
-// The last two rows of the terminal are held fixed with a scroll region
-// (DECSTBM): row N-1 carries live status, row N carries hard-coded hints.
-// All other output scrolls in rows 1..N-2.
+// ── Screen control ──────────────────────────────────────────────────────
 
-let statusProvider: (() => { status: string; hint: string }) | null = null;
-let barTimer: NodeJS.Timeout | null = null;
-let canvasOn = false;
-
-/** Register the callback that supplies the two bottom-bar lines. */
-export function setStatusProvider(fn: () => { status: string; hint: string }): void {
-  statusProvider = fn;
-}
-
-function setScrollRegion(): void {
-  const rows = termRows();
-  // Reserve the last two rows; content scrolls in 1..rows-2.
-  process.stdout.write(`\x1b[1;${Math.max(1, rows - 2)}r`);
-}
-
-/** Clear the screen and home the cursor — used for a clean start. */
+/** Clear the screen and home the cursor — used once, at startup. */
 export function clearScreen(): void {
   if (isTTY()) process.stdout.write("\x1b[2J\x1b[H");
 }
@@ -196,50 +178,4 @@ export function clipWidth(s: string, width: number): string {
     i++;
   }
   return out + "\x1b[0m";
-}
-
-/** Redraw the bottom bar in place, leaving the cursor where it was. */
-export function drawBottomBar(): void {
-  if (!canvasOn || !statusProvider) return;
-  const rows = termRows();
-  const inner = termCols() - MARGIN;
-  const { status, hint } = statusProvider();
-  process.stdout.write("\x1b7"); // save cursor
-  process.stdout.write(`\x1b[${rows - 1};1H\x1b[2K`);
-  process.stdout.write(GUTTER + clipWidth(status, inner));
-  process.stdout.write(`\x1b[${rows};1H\x1b[2K`);
-  process.stdout.write(GUTTER + clipWidth(hint, inner));
-  process.stdout.write("\x1b8"); // restore cursor
-}
-
-function handleResize(): void {
-  if (!canvasOn) return;
-  setScrollRegion();
-  drawBottomBar();
-}
-
-/** Turn on the canvas: reserve the bottom bar and start its refresh loop. */
-export function enableCanvas(): void {
-  if (canvasOn || !isTTY()) return;
-  canvasOn = true;
-  setScrollRegion();
-  clearScreen(); // clean slate — wipe the start-up picker chatter before the banner
-  drawBottomBar();
-  barTimer = setInterval(drawBottomBar, 1000);
-  process.stdout.on("resize", handleResize);
-}
-
-/** Tear the canvas down: release the scroll region and clear the bar. */
-export function disableCanvas(): void {
-  if (!canvasOn) return;
-  canvasOn = false;
-  if (barTimer) {
-    clearInterval(barTimer);
-    barTimer = null;
-  }
-  process.stdout.removeListener("resize", handleResize);
-  const rows = termRows();
-  process.stdout.write("\x1b[r"); // reset scroll region to full screen
-  process.stdout.write(`\x1b[${rows - 1};1H\x1b[2K`);
-  process.stdout.write(`\x1b[${rows};1H\x1b[2K`);
 }

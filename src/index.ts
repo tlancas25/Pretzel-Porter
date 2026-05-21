@@ -44,7 +44,7 @@ import { airgap } from "./airgap.js";
 import { setAudit, AUDIT_FILE } from "./audit.js";
 import { newSessionId, saveSession, loadSession, listSessions } from "./session.js";
 import { readPortMem } from "./portmem.js";
-import { GUTTER, enableCanvas, disableCanvas, setStatusProvider } from "./canvas.js";
+import { GUTTER, clearScreen } from "./canvas.js";
 import { VERSION } from "./version.js";
 import type { AgentConfig, Provider } from "./types.js";
 
@@ -139,7 +139,6 @@ function orExit<T>(fn: () => T): T {
 let mcpClients: McpClient[] = [];
 
 function cleanup(): void {
-  disableCanvas();
   killAllJobs();
   for (const client of mcpClients) client.close();
   closeTunnel();
@@ -276,11 +275,12 @@ function completePath(token: string, base: string): string[] {
 }
 
 /** Read one user message, supporting multi-line input via a trailing backslash. */
-async function readUserInput(): Promise<string> {
-  // A dim full-width rule marks where the input area begins each turn.
+async function readUserInput(status?: string): Promise<string> {
+  // Each turn opens with a dim rule and the status line, then the prompt.
   if (process.stdout.isTTY) {
     console.log();
     console.log(GUTTER + rule());
+    if (status) console.log(GUTTER + status);
   }
   let acc = "";
   let prompt = GUTTER + c.cyan("❯ ");
@@ -466,7 +466,7 @@ async function main(): Promise<void> {
   const customCommands = loadCustomCommands();
   let sessionId = newSessionId();
 
-  // The pinned bottom bar: a live status line plus a fixed hint line.
+  // A status line shown above each prompt — model, backend, context, modes.
   const statusLine = (): string => {
     const { pct } = agent.contextUsage();
     const pctRound = Math.min(999, Math.round(pct * 100));
@@ -487,9 +487,7 @@ async function main(): Promise<void> {
     if (modes.length > 0) line += sep + modes.join(" ");
     return line;
   };
-  const HINT = c.dim("Shift-Tab autonomous  ·  Esc stop  ·  Tab complete  ·  @file  ·  /help");
-  setStatusProvider(() => ({ status: statusLine(), hint: HINT }));
-  enableCanvas();
+  clearScreen(); // a clean slate so the banner starts at the top of the screen
 
   banner(cfg.model, permissions.roots(), cfg.rag.enabled);
 
@@ -550,7 +548,7 @@ async function main(): Promise<void> {
   };
 
   for (;;) {
-    const raw = await readUserInput();
+    const raw = await readUserInput(statusLine());
     if (raw === EOF) break;
     const input = raw.trim();
     if (!input) continue;
