@@ -28,7 +28,10 @@ export function App({ model, rag, history, onSubmit, onToggleAutonomous, onCance
   useSyncExternalStore(ui.subscribe, ui.getVersion, ui.getVersion);
   const { isRawModeSupported } = useStdin();
   const { stdout } = useStdout();
-  const dividerWidth = Math.max(8, (stdout?.columns ?? 80) - 2);
+  // Inset well below the terminal width: a line that fills the row exactly
+  // triggers a phantom wrap that desyncs Ink's render frame. -6 keeps slack;
+  // reading stdout.columns each render means it tracks window resizes.
+  const dividerWidth = Math.max(8, (stdout?.columns ?? 80) - 6);
 
   const staticItems: StaticEntry[] = [{ id: 0, kind: "banner" }, ...ui.items];
 
