@@ -66,6 +66,12 @@ sudo rm -rf "$APP_DIR"
 sudo mkdir -p "$APP_DIR"
 sudo cp -r "$HERE/dist" "$APP_DIR/dist"
 sudo cp "$HERE/agent.config.json" "$APP_DIR/agent.config.json"
+sudo cp "$HERE/package.json" "$HERE/package-lock.json" "$APP_DIR/"
+
+# Runtime dependencies (ink, react) — the compiled app imports them, so they
+# must be present alongside it. Dev dependencies are omitted.
+echo "→ installing runtime dependencies..."
+( cd "$APP_DIR" && sudo npm ci --omit=dev --silent --no-audit --no-fund )
 
 # --- 4. launcher ---------------------------------------------------------
 echo "→ installing launcher at $BIN..."

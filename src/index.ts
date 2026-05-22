@@ -16,27 +16,12 @@ import { allNotes, forget } from "./memory.js";
 import { renderTodos } from "./todos.js";
 import { loadCustomCommands, expandCommand } from "./commands.js";
 import { connectMcpServers, type McpClient } from "./mcp.js";
-import {
-  ask,
-  banner,
-  c,
-  closeRl,
-  confirm,
-  EOF,
-  meterBar,
-  onEscape,
-  onShiftTab,
-  printError,
-  printInfo,
-  printTiming,
-  rule,
-  selectFromMenu,
-  setCompleter,
-  setQuiet,
-  setTheme,
-  startSpinner,
-  stopSpinner,
-} from "./ui.js";
+import { ask, closeRl, confirm, EOF, meterBar, selectFromMenu, setTheme } from "./ui.js";
+import { c, printInfo, printError, printTiming, rule } from "./ui/bridge.js";
+import { ui } from "./ui/store.js";
+import { App } from "./ui/App.js";
+import { render } from "ink";
+import { createElement } from "react";
 import { planMode } from "./planmode.js";
 import { gitDiff, isGitRepo } from "./git.js";
 import { listJobs, getJob, killAllJobs } from "./jobs.js";
@@ -45,7 +30,6 @@ import { setAudit, AUDIT_FILE } from "./audit.js";
 import { newSessionId, saveSession, loadSession, listSessions } from "./session.js";
 import { readPortMem } from "./portmem.js";
 import { sessionToMarkdown } from "./export.js";
-import { GUTTER, clearScreen } from "./canvas.js";
 import { VERSION } from "./version.js";
 import type { AgentConfig, Provider } from "./types.js";
 
@@ -276,28 +260,6 @@ function completePath(token: string, base: string): string[] {
     });
 }
 
-/** Read one user message, supporting multi-line input via a trailing backslash. */
-async function readUserInput(status?: string): Promise<string> {
-  // Each turn opens with a dim rule and the status line, then the prompt.
-  if (process.stdout.isTTY) {
-    console.log();
-    console.log(GUTTER + rule());
-    if (status) console.log(GUTTER + status);
-  }
-  let acc = "";
-  let prompt = GUTTER + c.cyan("❯ ");
-  for (;;) {
-    const line = await ask(prompt);
-    if (line === EOF) return EOF;
-    if (line.endsWith("\\")) {
-      acc += line.slice(0, -1) + "\n";
-      prompt = GUTTER + c.dim("❯ ");
-      continue;
-    }
-    return acc + line;
-  }
-}
-
 /** Whether an executable is on the PATH (for /doctor). */
 function commandExists(cmd: string): Promise<boolean> {
   return new Promise((resolve) => {
@@ -324,7 +286,6 @@ async function runHeadless(promptArg: string): Promise<void> {
     process.exit(2);
   }
 
-  setQuiet(true);
   const cfg = orExit(loadConfig);
   setTheme(cfg.theme);
   airgap.set(cfg.airgap);
@@ -357,7 +318,8 @@ async function runHeadless(promptArg: string): Promise<void> {
   );
   const agent = new Agent(cfg, provider, permissions, []);
   await agent.run(prompt);
-  process.stdout.write("\n");
+  // The agent writes to the UI store; headless just prints the final answer.
+  process.stdout.write((agent.answer || "(no answer produced)") + "\n");
   closeTunnel();
   process.exit(agent.answer ? 0 : 1);
 }
@@ -412,33 +374,29 @@ async function main(): Promise<void> {
       1,
     );
     if (choice === 1) {
-      startSpinner(`opening SSH tunnel to ${sshTarget}`);
+      console.log(`opening SSH tunnel to ${sshTarget}…`);
       try {
         cfg.baseUrl = await openTunnel(cfg.ssh);
       } catch (e) {
-        stopSpinner();
-        printError((e as Error).message);
+        console.error((e as Error).message);
         cleanup();
         process.exit(1);
       }
-      stopSpinner();
       backendLabel = "cloud";
-      printInfo(`  ssh tunnel up — Ollama via ${cfg.baseUrl}\n`);
+      console.log(`ssh tunnel up — Ollama via ${cfg.baseUrl}`);
     }
   }
 
   const provider = new OllamaProvider(cfg);
 
-  startSpinner("connecting to Ollama");
+  console.log("connecting to Ollama…");
   try {
     await provider.healthCheck();
   } catch (e) {
-    stopSpinner();
-    printError((e as Error).message);
+    console.error((e as Error).message);
     cleanup();
     process.exit(1);
   }
-  stopSpinner();
 
   cfg.model = await chooseModel(provider, cfg);
   const state = loadState();
@@ -453,14 +411,13 @@ async function main(): Promise<void> {
   let mcpTools: import("./types.js").Tool[] = [];
   const mcpNames = Object.keys(cfg.mcpServers);
   if (mcpNames.length > 0) {
-    startSpinner(`connecting to ${mcpNames.length} MCP server(s)`);
+    console.log(`connecting to ${mcpNames.length} MCP server(s)…`);
     const result = await connectMcpServers(cfg.mcpServers);
-    stopSpinner();
     mcpClients = result.clients;
     mcpTools = result.tools;
-    for (const err of result.errors) printError(`MCP ${err}`);
+    for (const err of result.errors) console.error(`MCP ${err}`);
     if (mcpTools.length > 0) {
-      printInfo(`  ${mcpTools.length} MCP tool(s) from ${mcpClients.length} server(s)\n`);
+      console.log(`${mcpTools.length} MCP tool(s) from ${mcpClients.length} server(s)`);
     }
   }
 
@@ -468,78 +425,30 @@ async function main(): Promise<void> {
   const customCommands = loadCustomCommands();
   let sessionId = newSessionId();
 
-  // A status line shown above each prompt — model, backend, context, modes.
-  const statusLine = (): string => {
-    const { pct } = agent.contextUsage();
-    const pctRound = Math.min(999, Math.round(pct * 100));
-    const ctxColor = pctRound >= 95 ? c.red : pctRound >= 80 ? c.yellow : c.green;
-    const model = cfg.model.length > 28 ? cfg.model.slice(0, 27) + "…" : cfg.model;
-    const sep = c.dim("  ·  ");
-    const segments = [
-      `${c.cyan("▸")} ${c.bold(model)}`,
-      c.dim(backendLabel),
-      `${ctxColor(meterBar(pct))} ${ctxColor(`${pctRound}%`)}`,
-      c.dim(tildeify(cwd)),
-    ];
+  // Status — pushed into the UI store; refreshed after each turn.
+  const tildeCwd = tildeify(cwd);
+  const refreshStatus = (): void => {
     const modes: string[] = [];
-    if (planMode.active) modes.push(c.blue("plan"));
-    if (airgap.enabled) modes.push(c.green("air-gapped"));
-    if (autonomy.enabled) modes.push(c.yellow("⚡ autonomous"));
-    let line = segments.join(sep);
-    if (modes.length > 0) line += sep + modes.join(" ");
-    return line;
+    if (planMode.active) modes.push("plan");
+    if (airgap.enabled) modes.push("air-gapped");
+    if (autonomy.enabled) modes.push("⚡ autonomous");
+    ui.setStatus({
+      model: cfg.model,
+      backend: backendLabel,
+      cwd: tildeCwd,
+      ctxPct: agent.contextUsage().pct,
+      modes,
+    });
   };
-  clearScreen(); // a clean slate so the banner starts at the top of the screen
-
-  banner(cfg.model, permissions.roots(), cfg.rag.enabled);
+  refreshStatus();
 
   // Warn if the chosen model can't use tools — it will be chat-only.
   const caps = await provider.capabilities(cfg.model);
   if (caps && !caps.has("tools")) {
     printInfo(
-      c.yellow(`  note: ${cfg.model} has no tool-calling capability — `) +
-        c.yellow("file tools and RAG are disabled; chat only.\n"),
+      `note: ${cfg.model} has no tool-calling capability — file tools and RAG are disabled; chat only.`,
     );
   }
-
-  // Tab completion: slash-commands (built-in + custom) first, then file paths.
-  const allCommands = [...COMMANDS, ...[...customCommands.keys()].map((n) => "/" + n)];
-  setCompleter((line) => {
-    if (line.startsWith("/") && !line.includes(" ")) {
-      return [allCommands.filter((cmd) => cmd.startsWith(line)), line];
-    }
-    const token = line.split(/\s+/).pop() ?? "";
-    if (!token) return [[], line];
-    return [completePath(token, cwd), token];
-  });
-
-  // Shift-Tab flips autonomous mode — bypasses every confirmation.
-  onShiftTab(() => {
-    const on = autonomy.toggle();
-    process.stdout.write(
-      "\n" +
-        (on
-          ? c.yellow("⚡ autonomous mode ON — every write/shell action is auto-approved")
-          : c.green("✓ autonomous mode OFF — confirmations restored")) +
-        "\n",
-    );
-  });
-
-  // Escape cancels an in-flight response (handy mid-"thinking"); a no-op when idle.
-  onEscape(() => {
-    if (agent.running) agent.cancel();
-  });
-
-  // Ctrl-C cancels an in-flight response; at an idle prompt it quits.
-  process.on("SIGINT", () => {
-    if (agent.running) {
-      agent.cancel();
-      return;
-    }
-    console.log(c.dim("\nbye."));
-    cleanup();
-    process.exit(0);
-  });
 
   // Run one model turn, timing it and persisting the session afterwards.
   const runTurn = async (text: string): Promise<void> => {
@@ -549,18 +458,17 @@ async function main(): Promise<void> {
     saveSession(sessionId, agent.exportMessages());
   };
 
-  for (;;) {
-    const raw = await readUserInput(statusLine());
-    if (raw === EOF) break;
-    const input = raw.trim();
-    if (!input) continue;
+  let inkApp: ReturnType<typeof render> | null = null;
+  const quit = (): void => {
+    inkApp?.unmount();
+  };
 
-    if (input.startsWith("/")) {
-      const parts = input.slice(1).split(/\s+/);
-      const cmd = (parts[0] ?? "").toLowerCase();
-      const arg = parts.slice(1).join(" ").trim();
-
-      if (cmd === "exit" || cmd === "quit") break;
+  // Dispatch one slash command.
+  const handleCommand = async (cmd: string, arg: string, raw: string): Promise<void> => {
+      if (cmd === "exit" || cmd === "quit") {
+        quit();
+        return;
+      }
       else if (cmd === "help") {
         printInfo(rule());
         printInfo(HELP.trim());
@@ -724,25 +632,22 @@ async function main(): Promise<void> {
         const sessions = listSessions();
         if (sessions.length === 0) {
           printError("no saved sessions to resume.");
+        } else if (!arg) {
+          printInfo(
+            "pass a session id — /resume <id>:\n" +
+              sessions
+                .map((s) => `  ${s.id}  (${s.turns} turns)  ${s.preview}`)
+                .join("\n"),
+          );
         } else {
-          let pick = arg
-            ? sessions.find((s) => s.id === arg || s.id.startsWith(arg))
-            : undefined;
-          if (!arg) {
-            const idx = await selectFromMenu(
-              "Resume which session?",
-              sessions.map((s) => `${s.id}  ${s.preview}`),
-              0,
-            );
-            pick = sessions[idx];
-          }
+          const pick = sessions.find((s) => s.id === arg || s.id.startsWith(arg));
           const loaded = pick ? loadSession(pick.id) : null;
           if (!loaded) {
-            printError(arg ? `no session matching "${arg}".` : "could not load that session.");
+            printError(`no session matching "${arg}".`);
           } else {
             agent.importMessages(loaded.messages);
             sessionId = loaded.id;
-            printInfo(`resumed session ${loaded.id} (${loaded.turns} turns).\n`);
+            printInfo(`resumed session ${loaded.id} (${loaded.turns} turns).`);
           }
         }
       } else if (cmd === "doctor") {
@@ -795,21 +700,59 @@ async function main(): Promise<void> {
       } else if (customCommands.has(cmd)) {
         await runTurn(expandCommand(customCommands.get(cmd)!, arg));
       } else {
-        printError(`unknown command "${input}". Try /help.`);
+        printError(`unknown command "${raw}". Try /help.`);
       }
-      continue;
+  };
+
+  // One submitted line — a slash command, or a model turn.
+  const handleTurn = async (input: string): Promise<void> => {
+    if (input.startsWith("/")) {
+      const parts = input.slice(1).split(/\s+/);
+      const cmd = (parts[0] ?? "").toLowerCase();
+      const arg = parts.slice(1).join(" ").trim();
+      await handleCommand(cmd, arg, input);
+    } else {
+      await runTurn(input);
     }
+  };
 
-    await runTurn(input);
-  }
+  // The Ink app drives input; this runs a turn and keeps the store in sync.
+  const onSubmit = (text: string): void => {
+    ui.user(text);
+    void (async () => {
+      ui.setBusy(true);
+      try {
+        await handleTurn(text);
+      } catch (e) {
+        printError((e as Error).message);
+      } finally {
+        ui.setBusy(false);
+        refreshStatus();
+      }
+    })();
+  };
 
-  console.log(c.dim("bye."));
+  closeRl(); // hand stdin to Ink
+  const app = render(
+    createElement(App, {
+      model: cfg.model,
+      rag: cfg.rag.enabled,
+      history: [],
+      onSubmit,
+      onToggleAutonomous: () => {
+        autonomy.toggle();
+        refreshStatus();
+      },
+      onCancel: () => agent.cancel(),
+    }),
+  );
+  inkApp = app;
+  await app.waitUntilExit();
   cleanup();
 }
 
 main().catch((e) => {
-  stopSpinner();
-  printError(`fatal: ${(e as Error).stack ?? e}`);
+  console.error(`fatal: ${(e as Error).stack ?? e}`);
   cleanup();
   process.exit(1);
 });
