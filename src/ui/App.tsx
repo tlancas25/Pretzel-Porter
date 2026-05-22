@@ -2,7 +2,7 @@
 // <Static> so they scroll into terminal history; the streaming region, status
 // bar, and the input (or confirm dialog) are the live, re-rendered area.
 
-import { Box, Static, Text, useStdin, useStdout } from "ink";
+import { Box, Static, Text, useStdin } from "ink";
 import { useSyncExternalStore } from "react";
 import { ui, type ConvItem } from "./store.js";
 import { VERSION } from "../version.js";
@@ -27,11 +27,6 @@ export function App({ model, rag, history, onSubmit, onToggleAutonomous, onCance
   // Re-render whenever the store changes.
   useSyncExternalStore(ui.subscribe, ui.getVersion, ui.getVersion);
   const { isRawModeSupported } = useStdin();
-  const { stdout } = useStdout();
-  // Inset well below the terminal width: a line that fills the row exactly
-  // triggers a phantom wrap that desyncs Ink's render frame. -6 keeps slack;
-  // reading stdout.columns each render means it tracks window resizes.
-  const dividerWidth = Math.max(8, (stdout?.columns ?? 80) - 6);
 
   const staticItems: StaticEntry[] = [{ id: 0, kind: "banner" }, ...ui.items];
 
@@ -62,11 +57,9 @@ export function App({ model, rag, history, onSubmit, onToggleAutonomous, onCance
         </Box>
       ) : null}
 
-      {/* A rule separating the conversation above from the input zone below. */}
       <Box marginTop={1}>
-        <Text dimColor>{"─".repeat(dividerWidth)}</Text>
+        <StatusBar status={ui.status} />
       </Box>
-      <StatusBar status={ui.status} />
 
       {ui.pendingConfirm ? (
         <ConfirmDialog question={ui.pendingConfirm.question} />
