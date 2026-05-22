@@ -131,25 +131,14 @@ function cleanup(): void {
   closeRl();
 }
 
-/** Ask the user to trust the launch directory the first time it is used. */
-async function ensureTrusted(dir: string): Promise<void> {
+/** Record the launch directory as trusted. Non-interactive: launching pport
+ *  here is the consent, and the path sandbox still confines every file op. */
+function ensureTrusted(dir: string): void {
   const state = loadState();
   if (state.trustedDirs.includes(dir)) return;
-
-  console.log();
-  console.log(c.yellow("  ⚠  New directory"));
-  console.log("  Pretzel Porter can read, edit, and run shell commands in:");
-  console.log(`     ${c.bold(dir)}`);
-  console.log(c.dim("  Only trust a directory whose contents you recognise."));
-  console.log();
-  if (!(await confirm("  Trust this directory?"))) {
-    printError("Directory not trusted — exiting.");
-    cleanup();
-    process.exit(0);
-  }
+  console.log(`trusting new directory: ${dir}`);
   state.trustedDirs.push(dir);
   saveState(state);
-  printInfo("  trusted — it won't ask again for this directory.\n");
 }
 
 /** Models that can chat (drop embedding-only models from the picker). */
@@ -335,7 +324,8 @@ async function main(): Promise<void> {
     console.log(
       `Pretzel Porter v${VERSION} — a private local terminal agent\n\n` +
         "Usage:\n" +
-        "  pport               run interactively in the current directory\n" +
+        "  pport               run interactively (cloud backend if configured)\n" +
+        "  pport --local       run against the local Ollama instead of cloud\n" +
         "  sudo pport          run as root (to reach root-owned files)\n" +
         '  pport -p "task"     run one task headless, print the result, exit\n' +
         "  echo task | pport -p   same, taking the task from stdin\n" +
@@ -359,32 +349,24 @@ async function main(): Promise<void> {
   setAudit(cfg.auditLog);
   const cwd = realpathSync(process.cwd());
 
-  await ensureTrusted(cwd);
+  ensureTrusted(cwd);
 
-  // Choose the backend: local Ollama, or the SSH-tunnelled remote one.
-  // The picker only appears when an SSH target is configured (ssh.enabled).
+  // Backend: the SSH-tunnelled cloud Ollama is the daily driver; `--local`
+  // forces the local one. No interactive picker — an interactive prompt can't
+  // run before Ink takes over stdin (it leaves stdin unusable for Ink).
   let backendLabel = "local";
-  if (cfg.ssh.enabled) {
+  if (cfg.ssh.enabled && !args.includes("--local")) {
     const sshTarget = cfg.ssh.mode === "gcloud" ? cfg.ssh.gcloud.instance : cfg.ssh.host;
-    // Cloud is the daily driver; local is the backup. The picker still always
-    // shows — the operator picks per session — but Cloud is pre-selected.
-    const choice = await selectFromMenu(
-      "Which Ollama backend?",
-      ["Local  (this machine — backup)", `Cloud  (${sshTarget} via SSH)`],
-      1,
-    );
-    if (choice === 1) {
-      console.log(`opening SSH tunnel to ${sshTarget}…`);
-      try {
-        cfg.baseUrl = await openTunnel(cfg.ssh);
-      } catch (e) {
-        console.error((e as Error).message);
-        cleanup();
-        process.exit(1);
-      }
-      backendLabel = "cloud";
-      console.log(`ssh tunnel up — Ollama via ${cfg.baseUrl}`);
+    console.log(`opening SSH tunnel to ${sshTarget}…`);
+    try {
+      cfg.baseUrl = await openTunnel(cfg.ssh);
+    } catch (e) {
+      console.error((e as Error).message);
+      cleanup();
+      process.exit(1);
     }
+    backendLabel = "cloud";
+    console.log(`ssh tunnel up — Ollama via ${cfg.baseUrl}`);
   }
 
   const provider = new OllamaProvider(cfg);
@@ -398,8 +380,8 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  cfg.model = await chooseModel(provider, cfg);
   const state = loadState();
+  cfg.model = state.lastModel || cfg.model;
   state.lastModel = cfg.model;
   saveState(state);
 
