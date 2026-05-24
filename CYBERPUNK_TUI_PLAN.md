@@ -133,14 +133,14 @@ src/ui/
 
 ## Phases
 
-### Phase 1 — Foundation *(in progress, no visible UI change)*
+### Phase 1 — Foundation *(✅ shipped — 9ab39e1)*
 
-- `theme/tokens.ts` — color roles + 256-color fallback
-- `capabilities.ts` — Ghostty profile + Terminal.app fallback
-- `viewport/buffer.ts` — buffer + scroll math + sticky-on-scroll + "↓ N new" indicator
-- `useAnimationFrame.ts` — 10fps capped redraw hook
-- Alt-screen lifecycle in `src/index.ts`
-- Typecheck passes; pport still works (current UI; new modules unused yet)
+- ✅ `theme/tokens.ts` — color / glyph / spacing tokens exposed by role
+- ✅ `capabilities.ts` — runtime detection (Ghostty / iTerm2 / WezTerm / Kitty profiles; Terminal.app degrade)
+- ✅ `viewport/buffer.ts` — buffer + scroll offset + `newSinceScroll` + `computeVisibleSlice()` helper
+- ✅ `useAnimationFrame.ts` — 10fps capped redraw hook (ref-stable callback)
+- ✅ `altscreen.ts` — enter / exit + restore-on-crash exit hook (not wired yet; Phase 2 calls it)
+- ✅ Typecheck passes; current UI unchanged because nothing's wired in
 
 ### Phase 2 — Hyper-stack frame *(the look starts appearing)*
 
