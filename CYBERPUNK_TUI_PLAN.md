@@ -142,36 +142,43 @@ src/ui/
 - ✅ `altscreen.ts` — enter / exit + restore-on-crash exit hook (not wired yet; Phase 2 calls it)
 - ✅ Typecheck passes; current UI unchanged because nothing's wired in
 
-### Phase 2 — Hyper-stack frame *(the look starts appearing)*
+### Phase 2 — Hyper-stack frame *(✅ shipped behind PP_CYBERPUNK gate)*
 
-- `HudHeader` with 2-column layout: model/backend/sandbox + live meters
-- `HudStatus` with bracketed-tag shortcuts
-- `Sparkline` (latency, tok/s — block elements ▁▂▃▄▅▆▇█)
-- `Meter` (CTX %, neon fill ████░░░░)
-- `ViewportLog` consumes the buffer; auto-scrolls to bottom; PageUp/PageDown to scroll
-- App.tsx rewritten around HUD + viewport + status, no more `<Static>`
+- ✅ `HudHeader` — 2-column layout, model/backend on left, CTX meter +
+  latency sparkline + tok/s sparkline on right
+- ✅ `HudStatus` — bracketed-tag shortcuts, live state badge (idle / working / approve)
+- ✅ `Sparkline` — auto-scaled block-element series with hot-color top 20%
+- ✅ `Meter` — neon fill + dim track, sub-cell precision via partial blocks
+- ✅ `Badge` — `[ TAG ]` label, active variant uses inverted text
+- ⏸ `ViewportLog` — deferred. Current build uses `<Static>` like the default
+  App so terminal scrollback still works. Fully-pinned HUD with internal
+  viewport requires alt-screen mode + manual clipping; tracked for Phase 6.
+- ✅ `CyberpunkApp` — new root that subscribes to the same `ui` store as
+  the default App. Drop-in replacement at the `render()` call site.
 
-### Phase 3 — Conversation styling
+### Phase 3 — Conversation styling *(✅ shipped)*
 
-- `ToolCallBlock` with vertical connectors
-- `ThinkingBlock` with monochrome dim italic
-- Diff styling pass: `[ HUNK ]` tags, cleaner gutter
-- User prompts: `›` prefix in accent
-- Streaming output through the buffer (not direct stdout writes)
+- ✅ `ToolBlock` with `╭─◉ / │ / ╰─◉` connectors and pending/ok/failed states
+- ✅ `ThinkingBlock` — magenta `◆ thinking` header + dim italic body
+- ✅ `DiffBlock` — `[ DIFF ]` tag + coloured gutter (`+ ` / `- ` / `@ `)
+- ✅ User prompts: `›` prefix in accent.secondary (cyan)
+- ✅ Streaming output flows through the same store; `LiveStream` renders
+  in-progress thinking + content with a blinking CRT cursor at the tail
 
-### Phase 4 — Boot sequence + streaming flair
+### Phase 4 — Boot sequence + streaming flair *(✅ shipped, partial)*
 
-- Pre-alt-screen typed-cadence boot lines wired to real setup timings
-- Streaming output: variable-cadence reveal + blinking CRT cursor at the tail
-- Single-frame glitch character flash on error lines
-- Pulse animation on autonomous mode indicator
+- ✅ Pre-Ink typed-cadence boot sequence with block-letter PPORT banner
+- ✅ Blinking CRT cursor on streaming content (500ms blink interval)
+- ⏸ Real per-step timings in boot lines — current lines are static strings
+- ⏸ Glitch character flash on error lines — basic ✗ + red text only for now
 
-### Phase 5 — Polish + theme switching
+### Phase 5 — Polish + theme switching *(partial)*
 
-- `/theme` command swaps between hyper-stack and the three other flavors
-  (neon-noir / brutalist / phosphor-CRT) via the token system
-- Optional `\a` bell + `afplay` on tool-confirm requests (config flag, off by default)
-- Resize-handling polish (recalculate sparkline widths, viewport rows)
+- ✅ Resize-handling — `HudHeader` listens to `stdout.resize` and re-layouts
+- ⏸ `/theme` command — token system is in place, command not wired
+- ⏸ Optional bell on confirm — not wired
+- ⏸ Autonomous-mode pulse animation — `useAnimationFrame` exists, not wired
+  into `HudHeader` modes badges yet
 
 ### Phase 6 — Stretch *(only if 1-5 land well)*
 

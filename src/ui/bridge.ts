@@ -5,6 +5,7 @@
 // existing imperative agent loop drive a declarative React UI unchanged.
 
 import { ui } from "./store.js";
+import { series } from "./cyberpunk/series.js";
 
 /** Colour helpers are identity now — the Ink components own all styling. */
 const id = (s: string): string => s;
@@ -32,6 +33,14 @@ export function printDiff(diff: string): void {
 }
 export function printTiming(seconds: number): void {
   ui.timing(seconds);
+  // Cyberpunk HUD sparklines watch this — push latency in ms regardless of
+  // mode so the data's ready when the user flips PP_CYBERPUNK on.
+  series.pushLatency(seconds * 1000);
+}
+
+/** Called by the stream renderer when generation completes — feeds tok/s. */
+export function recordTokRate(tokens: number, seconds: number): void {
+  if (seconds > 0 && tokens > 0) series.pushTokRate(tokens / seconds);
 }
 
 let lastToolId = 0;

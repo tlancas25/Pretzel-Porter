@@ -20,6 +20,8 @@ import { ask, closeRl, confirm, EOF, meterBar, selectFromMenu, setTheme } from "
 import { c, printInfo, printError, printTiming, rule } from "./ui/bridge.js";
 import { ui } from "./ui/store.js";
 import { App } from "./ui/App.js";
+import { CyberpunkApp } from "./ui/cyberpunk/App.js";
+import { runBootSequence } from "./ui/cyberpunk/boot.js";
 import { render } from "ink";
 import { createElement } from "react";
 import { planMode } from "./planmode.js";
@@ -715,8 +717,16 @@ async function main(): Promise<void> {
   };
 
   closeRl(); // hand stdin to Ink
+
+  // Experimental cyberpunk UI gate. PP_CYBERPUNK=1 (or "true") swaps in the
+  // hyper-stack App + runs the typed boot sequence first. Off by default so
+  // the shipped v1.4.0 UI is unchanged for anyone not opting in.
+  const cyberpunk = /^(1|true|yes|on)$/i.test(process.env.PP_CYBERPUNK ?? "");
+  if (cyberpunk) await runBootSequence({ version: VERSION });
+
+  const RootApp = cyberpunk ? CyberpunkApp : App;
   const app = render(
-    createElement(App, {
+    createElement(RootApp, {
       model: cfg.model,
       rag: cfg.rag.enabled,
       history: [],
