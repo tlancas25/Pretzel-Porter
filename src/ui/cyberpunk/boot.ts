@@ -29,29 +29,18 @@ async function typeLine(s: string, color: string = COL.accent.secondary, perChar
   process.stdout.write("\n");
 }
 
-const BANNER = [
-  "  ██████╗ ██████╗  ██████╗ ██████╗ ████████╗",
-  "  ██╔══██╗██╔══██╗██╔═══██╗██╔══██╗╚══██╔══╝",
-  "  ██████╔╝██████╔╝██║   ██║██████╔╝   ██║   ",
-  "  ██╔═══╝ ██╔═══╝ ██║   ██║██╔══██╗   ██║   ",
-  "  ██║     ██║     ╚██████╔╝██║  ██║   ██║   ",
-  "  ╚═╝     ╚═╝      ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ",
-];
-
 export async function runBootSequence(opts: { version: string; quick?: boolean }): Promise<void> {
   if (!process.stdout.isTTY) return; // skip in piped mode
   if (opts.quick) return;
   process.stdout.write("\n");
-  for (const ln of BANNER) {
-    process.stdout.write(ansi(ln, COL.accent.primary) + "\n");
-  }
-  process.stdout.write("\n");
-  await typeLine(
-    `  > pretzel.porter ${opts.version} :: cyberpunk-tui experimental`,
-    COL.accent.secondary,
-  );
-  await typeLine("  > booting...", COL.text.dim, 10);
-  await sleep(60);
+  // Plain-text title — bold neon "Pretzel Porter" in the primary accent, no
+  // ASCII art. Matches the brand and stays light on token budget for users
+  // who paste the boot output back into a session.
+  process.stdout.write("  " + ansi("\x1b[1mPretzel Porter\x1b[22m", COL.accent.primary));
+  process.stdout.write("  " + ansi(opts.version, COL.text.dim) + "\n\n");
+
+  await typeLine("  > booting...", COL.text.dim, 8);
+  await sleep(50);
   await typeLine("  > terminal: " + (process.env.TERM_PROGRAM ?? "unknown"), COL.text.dim, 3);
   await typeLine("  > truecolor: ok", COL.status.ok, 3);
   await typeLine("  > raw mode: armed", COL.status.ok, 3);

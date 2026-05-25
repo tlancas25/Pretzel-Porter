@@ -718,13 +718,13 @@ async function main(): Promise<void> {
 
   closeRl(); // hand stdin to Ink
 
-  // Experimental cyberpunk UI gate. PP_CYBERPUNK=1 (or "true") swaps in the
-  // hyper-stack App + runs the typed boot sequence first. Off by default so
-  // the shipped v1.4.0 UI is unchanged for anyone not opting in.
-  const cyberpunk = /^(1|true|yes|on)$/i.test(process.env.PP_CYBERPUNK ?? "");
-  if (cyberpunk) await runBootSequence({ version: VERSION });
+  // Hyper-stack cyberpunk UI is the default since v1.5.0. Escape hatch:
+  // PP_LEGACY=1 (or "true") falls back to the v1.4.0 chrome so a regression
+  // is one env var away from being worked around.
+  const legacy = /^(1|true|yes|on)$/i.test(process.env.PP_LEGACY ?? "");
+  if (!legacy) await runBootSequence({ version: VERSION });
 
-  const RootApp = cyberpunk ? CyberpunkApp : App;
+  const RootApp = legacy ? App : CyberpunkApp;
   const app = render(
     createElement(RootApp, {
       model: cfg.model,
