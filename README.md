@@ -14,7 +14,7 @@
 **Pretzel Porter** — a small, **fully local** terminal agent — like Claude
 Code, but it runs on any local LLM you have in Ollama and never sends anything
 off your machine. Built for working with sensitive files (portfolio, finances,
-personal docs) where privacy is the whole point. _v1.3.0_
+personal docs) where privacy is the whole point. _v1.5.0_
 
 It can **think**, **reason**, and **use tools** to read, search, edit, write,
 and run shell commands — all confined to a directory sandbox you control. With
@@ -405,7 +405,16 @@ other code changes.
 
 ## Status
 
-v1.2.0 — the full enhancement roadmap is implemented:
+**v1.5.0** — the cyberpunk **hyper-stack TUI** is the default: bordered HUD
+with live CTX meter + latency / tok-rate sparklines, styled tool-call blocks,
+attention-grabbing approval card (pulsing border, inverse-video Y/N/A chips,
+bell on mount). `PP_LEGACY=1` falls back to the v1.4.0 chrome.
+
+Previous milestones — the full enhancement roadmap (Phases 1-5) shipped in
+v1.2.0 and the full Ink rewrite landed in v1.4.0. See `CHANGELOG.md` for the
+release-by-release breakdown.
+
+What ships today:
 
 - **Reliability & UX** — streamed responses, cancellable generation,
   compaction + context meter, diff previews, `/undo` + `/redo`, rich input.
@@ -419,4 +428,15 @@ v1.2.0 — the full enhancement roadmap is implemented:
   permission-rule engine, air-gap mode, an audit log, image input,
   diagnostics, and themes.
 
-The project remains Node + TypeScript with zero runtime dependencies.
+## Releasing
+
+When merging a meaningful change to `main`:
+
+1. Bump `src/version.ts` and `package.json` together (they must match).
+2. Add a `CHANGELOG.md` entry under a new version header.
+3. After merge, tag: `git tag -a vX.Y.Z -m "vX.Y.Z — short summary"` then
+   `git push origin vX.Y.Z`.
+4. `sudo ./install.sh` to refresh `/opt/pretzel-porter/`.
+
+The project is Node + TypeScript. Runtime deps (since v1.5.0): `ink`,
+`react`, `ink-text-input`, `ink-spinner`.

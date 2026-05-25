@@ -175,8 +175,11 @@ src/ui/
 ### Phase 5 — Polish + theme switching *(partial)*
 
 - ✅ Resize-handling — `HudHeader` listens to `stdout.resize` and re-layouts
+- ✅ Big attention-grabbing confirm dialog (9563720) — bordered card with
+  hot-pink ↔ amber border pulse at 2fps, inverse-video Y/N/A chips, single
+  `\x07` bell ring on mount. User reported missing the small v1.4.0 prompt
+  and sitting idle for minutes — this fixes that
 - ⏸ `/theme` command — token system is in place, command not wired
-- ⏸ Optional bell on confirm — not wired
 - ⏸ Autonomous-mode pulse animation — `useAnimationFrame` exists, not wired
   into `HudHeader` modes badges yet
 
