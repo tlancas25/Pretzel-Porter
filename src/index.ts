@@ -20,6 +20,8 @@ import { ask, closeRl, confirm, EOF, meterBar, selectFromMenu, setTheme } from "
 import { c, printInfo, printError, printTiming, rule } from "./ui/bridge.js";
 import { ui } from "./ui/store.js";
 import { App } from "./ui/App.js";
+import { CyberpunkApp } from "./ui/cyberpunk/App.js";
+import { runBootSequence } from "./ui/cyberpunk/boot.js";
 import { render } from "ink";
 import { createElement } from "react";
 import { planMode } from "./planmode.js";
@@ -715,8 +717,16 @@ async function main(): Promise<void> {
   };
 
   closeRl(); // hand stdin to Ink
+
+  // Hyper-stack cyberpunk UI is the default since v1.5.0. Escape hatch:
+  // PP_LEGACY=1 (or "true") falls back to the v1.4.0 chrome so a regression
+  // is one env var away from being worked around.
+  const legacy = /^(1|true|yes|on)$/i.test(process.env.PP_LEGACY ?? "");
+  if (!legacy) await runBootSequence({ version: VERSION });
+
+  const RootApp = legacy ? App : CyberpunkApp;
   const app = render(
-    createElement(App, {
+    createElement(RootApp, {
       model: cfg.model,
       rag: cfg.rag.enabled,
       history: [],
