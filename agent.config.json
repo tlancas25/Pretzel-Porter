@@ -10,7 +10,7 @@
     "topK": 40,
     "minP": 0.05,
     "repeatPenalty": 1.3,
-    "repeatLastN": 256
+    "repeatLastN": 1024
   },
   "think": true,
   "hideThinking": false,

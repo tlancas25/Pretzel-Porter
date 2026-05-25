@@ -141,8 +141,25 @@ export interface SamplingConfig {
   minP: number;
   /** Penalty on repeated tokens — >1 discourages loops; ~1.3 is firm. */
   repeatPenalty: number;
-  /** How many recent tokens the repeat penalty considers. */
+  /** How many recent tokens the repeat penalty considers. 256 is small for
+   *  long agentic turns; 1024-2048 is recommended for 27B+ models. */
   repeatLastN: number;
+  /** Max tokens per response. -1 = unlimited. Send a large number (or -1) to
+   *  prevent Ollama's default cap (128 in some versions) from cutting off
+   *  mid-thought, which is a frequent loop trigger. */
+  numPredict?: number;
+  /** Prompt-processing batch size. Bigger = faster prompt evaluation on GPU
+   *  at the cost of more VRAM. Default 512; cloud GPUs handle 1024-2048. */
+  numBatch?: number;
+  /** Number of model layers to offload to GPU. -1 = all (auto). */
+  numGpu?: number;
+  /** Mirostat sampling: 0 off (default), 1 = v1, 2 = v2. Empirically better
+   *  at avoiding repetition loops than fixed top-p/top-k. */
+  mirostat?: 0 | 1 | 2;
+  /** Mirostat target entropy. Typical 4.0-6.0. */
+  mirostatTau?: number;
+  /** Mirostat learning rate. Typical 0.1. */
+  mirostatEta?: number;
 }
 
 /** A configured permission rule — see src/rules.ts. */

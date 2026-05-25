@@ -23,7 +23,17 @@ const DEFAULTS: AgentConfig = {
     topK: 40,
     minP: 0.05,
     repeatPenalty: 1.3,
-    repeatLastN: 256,
+    // Bumped from 256 in v1.5.1 — long agentic turns easily exceeded the
+    // old window, which let "I'll check X… I'll check X…" loops slip past
+    // the penalty. The actual loop fix that landed.
+    repeatLastN: 1024,
+    // numPredict / numBatch / numGpu / mirostat are NOT set by default —
+    // earlier v1.5.1 included numPredict=-1 + numBatch=1024 but the latter
+    // caused Ollama to reload the model on every connect (slow first
+    // response, ~1 min for a 26B), and numPredict=-1 let short prompts
+    // run past natural stopping points. Users who want them set them
+    // explicitly in agent.config.json — the provider passes them through
+    // only when present.
   },
   think: true,
   maxSteps: 25,

@@ -98,15 +98,7 @@ export class OllamaProvider implements Provider {
       tools: useTools ? tools.map((t) => ({ type: "function", function: t })) : [],
       think: useThink,
       stream,
-      options: {
-        temperature: this.cfg.temperature,
-        num_ctx: this.cfg.numCtx,
-        top_p: this.cfg.sampling.topP,
-        top_k: this.cfg.sampling.topK,
-        min_p: this.cfg.sampling.minP,
-        repeat_penalty: this.cfg.sampling.repeatPenalty,
-        repeat_last_n: this.cfg.sampling.repeatLastN,
-      },
+      options: buildOllamaOptions(this.cfg),
     };
 
     // The request is aborted by the caller's signal, or by an inactivity
@@ -242,6 +234,34 @@ export class OllamaProvider implements Provider {
 type OllamaToolCall = { function?: { name?: string; arguments?: unknown } };
 
 /** Convert Ollama's tool-call shape into our ToolCall[], minting local ids. */
+/**
+ * Build the `options` object that goes to Ollama. Optional fields are only
+ * included when set — sending `undefined` for a key Ollama doesn't know
+ * doesn't hurt, but sending e.g. `num_predict: undefined` over the wire as
+ * `null` would, and keeping the body tight makes debug logs scan easier.
+ */
+function buildOllamaOptions(cfg: AgentConfig): Record<string, unknown> {
+  const s = cfg.sampling;
+  const opts: Record<string, unknown> = {
+    temperature: cfg.temperature,
+    num_ctx: cfg.numCtx,
+    top_p: s.topP,
+    top_k: s.topK,
+    min_p: s.minP,
+    repeat_penalty: s.repeatPenalty,
+    repeat_last_n: s.repeatLastN,
+  };
+  if (s.numPredict !== undefined) opts.num_predict = s.numPredict;
+  if (s.numBatch !== undefined) opts.num_batch = s.numBatch;
+  if (s.numGpu !== undefined) opts.num_gpu = s.numGpu;
+  if (s.mirostat !== undefined && s.mirostat !== 0) {
+    opts.mirostat = s.mirostat;
+    if (s.mirostatTau !== undefined) opts.mirostat_tau = s.mirostatTau;
+    if (s.mirostatEta !== undefined) opts.mirostat_eta = s.mirostatEta;
+  }
+  return opts;
+}
+
 function toToolCalls(raw: OllamaToolCall[] | undefined): ToolCall[] {
   return (raw ?? []).map((tc, i) => ({
     id: `call_${Date.now().toString(36)}_${i}`,

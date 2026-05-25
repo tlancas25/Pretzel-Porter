@@ -4,6 +4,44 @@ All notable changes to Pretzel Porter. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com); versions match
 `src/version.ts` and `package.json`.
 
+## [1.5.1] — 2026-05-24
+
+### Added
+- **Extended Ollama sampling**: `numPredict`, `numBatch`, `numGpu`,
+  `mirostat` (+ `mirostatTau` / `mirostatEta`) are now supported in
+  `agent.config.json` and passed through to Ollama's `options`. All
+  optional — only sent when set, so behaviour is unchanged if you don't
+  opt in.
+- `install.sh --reset-config` flag for explicit restore of the repo
+  default config.
+
+### Changed
+- **`repeatLastN` default bumped 256 → 1024.** Long agentic turns
+  routinely exceeded the old 256-token window, letting the model loop
+  on phrases like "I'll check X… I'll check X…" without triggering the
+  repeat penalty. This is the loop fix.
+- **`install.sh` now PRESERVES** `/opt/pretzel-porter/agent.config.json`
+  on upgrade instead of overwriting it. SSH/cloud settings, custom
+  models, and learned permission rules survive `sudo ./install.sh`.
+  Use `--reset-config` to force-restore defaults.
+- **Boot banner now spells out "PRETZEL" + "PORTER"** in the same
+  chunky ANSI-shadow font (stacked on two lines) — the v1.5.0 plain
+  text was a regression from the earlier block-letter PPORT banner.
+
+### Reverted before release
+- `numPredict: -1` and `numBatch: 1024` had been set as defaults in
+  an interim build but caused the cloud Ollama backend to either
+  reload the model (long first-response latency for a 26B) or run
+  past natural stopping points on short prompts. Both options remain
+  available in the schema; you opt in explicitly in
+  `agent.config.json` if you want to tune them.
+
+### Why this version exists
+User reported the 26B abliterated model (on the cloud SSH backend)
+hitting repetition loops mid-task. `repeat_last_n` was too short to
+catch them; `install.sh` was also clobbering runtime config on each
+upgrade. Both fixed.
+
 ## [1.5.0] — 2026-05-24
 
 ### Added

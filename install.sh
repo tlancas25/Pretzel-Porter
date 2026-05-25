@@ -17,17 +17,22 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # --- arguments -----------------------------------------------------------
 UPDATE=0
+RESET_CONFIG=0
 for arg in "$@"; do
   case "$arg" in
     --update) UPDATE=1 ;;
+    --reset-config) RESET_CONFIG=1 ;;
     -h|--help)
-      echo "usage: ./install.sh [--update]"
-      echo "  (no flag)   build + install from this checkout"
-      echo "  --update    git pull the latest, then build + install"
+      echo "usage: ./install.sh [--update] [--reset-config]"
+      echo "  (no flag)        build + install from this checkout"
+      echo "  --update         git pull the latest, then build + install"
+      echo "  --reset-config   overwrite $APP_DIR/agent.config.json with repo defaults"
+      echo "                   (destroys local SSH / model / rule customisations)"
       exit 0 ;;
     *) echo "error: unknown option '$arg' (try --help)"; exit 2 ;;
   esac
 done
+export RESET_CONFIG
 
 echo "Pretzel Porter — installer"
 echo
@@ -65,7 +70,15 @@ echo "→ installing to $APP_DIR  (sudo)..."
 sudo rm -rf "$APP_DIR"
 sudo mkdir -p "$APP_DIR"
 sudo cp -r "$HERE/dist" "$APP_DIR/dist"
-sudo cp "$HERE/agent.config.json" "$APP_DIR/agent.config.json"
+# Preserve an existing runtime config (SSH/cloud setup, custom model,
+# learned permission rules etc.) — only seed defaults on first install.
+# Use `sudo ./install.sh --reset-config` to force the default config back.
+if [ ! -f "$APP_DIR/agent.config.json" ] || [ "${RESET_CONFIG:-0}" = "1" ]; then
+  echo "→ seeding $APP_DIR/agent.config.json with repo defaults"
+  sudo cp "$HERE/agent.config.json" "$APP_DIR/agent.config.json"
+else
+  echo "→ preserving existing $APP_DIR/agent.config.json"
+fi
 sudo cp "$HERE/package.json" "$HERE/package-lock.json" "$APP_DIR/"
 
 # Runtime dependencies (ink, react) — the compiled app imports them, so they

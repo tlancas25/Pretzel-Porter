@@ -29,15 +29,102 @@ async function typeLine(s: string, color: string = COL.accent.secondary, perChar
   process.stdout.write("\n");
 }
 
+// ANSI Shadow-style block font, 6 rows tall, per-letter columns vary. Each
+// row of a letter is the same width so concatenating across letters keeps
+// the baseline aligned. Only the letters we actually need.
+const FONT: Record<string, string[]> = {
+  P: [
+    "██████╗ ",
+    "██╔══██╗",
+    "██████╔╝",
+    "██╔═══╝ ",
+    "██║     ",
+    "╚═╝     ",
+  ],
+  R: [
+    "██████╗ ",
+    "██╔══██╗",
+    "██████╔╝",
+    "██╔══██╗",
+    "██║  ██║",
+    "╚═╝  ╚═╝",
+  ],
+  E: [
+    "███████╗",
+    "██╔════╝",
+    "█████╗  ",
+    "██╔══╝  ",
+    "███████╗",
+    "╚══════╝",
+  ],
+  T: [
+    "████████╗",
+    "╚══██╔══╝",
+    "   ██║   ",
+    "   ██║   ",
+    "   ██║   ",
+    "   ╚═╝   ",
+  ],
+  Z: [
+    "███████╗",
+    "╚══███╔╝",
+    "  ██╔╝  ",
+    " ██╔╝   ",
+    "███████╗",
+    "╚══════╝",
+  ],
+  L: [
+    "██╗    ",
+    "██║    ",
+    "██║    ",
+    "██║    ",
+    "██████╗",
+    "╚═════╝",
+  ],
+  O: [
+    " ██████╗ ",
+    "██╔═══██╗",
+    "██║   ██║",
+    "██║   ██║",
+    "╚██████╔╝",
+    " ╚═════╝ ",
+  ],
+  " ": ["  ", "  ", "  ", "  ", "  ", "  "],
+};
+
+/** Render a word in the block font as 6 rows. Caller pads the left margin. */
+function bigText(word: string): string[] {
+  const rows = 6;
+  const out: string[] = [];
+  const upper = word.toUpperCase();
+  for (let r = 0; r < rows; r++) {
+    let line = "";
+    for (const ch of upper) {
+      const glyph = FONT[ch];
+      line += (glyph ? glyph[r]! : "  ") + " ";
+    }
+    out.push(line);
+  }
+  return out;
+}
+
 export async function runBootSequence(opts: { version: string; quick?: boolean }): Promise<void> {
   if (!process.stdout.isTTY) return; // skip in piped mode
   if (opts.quick) return;
   process.stdout.write("\n");
-  // Plain-text title — bold neon "Pretzel Porter" in the primary accent, no
-  // ASCII art. Matches the brand and stays light on token budget for users
-  // who paste the boot output back into a session.
-  process.stdout.write("  " + ansi("\x1b[1mPretzel Porter\x1b[22m", COL.accent.primary));
-  process.stdout.write("  " + ansi(opts.version, COL.text.dim) + "\n\n");
+
+  // Chunky stacked block-letter banner: "PRETZEL" on top, "PORTER" below.
+  // Same ANSI Shadow font as the prior PPORT banner — full name spelled out.
+  for (const ln of bigText("PRETZEL")) {
+    process.stdout.write("  " + ansi(ln, COL.accent.primary) + "\n");
+  }
+  for (const ln of bigText("PORTER")) {
+    process.stdout.write("  " + ansi(ln, COL.accent.primary) + "\n");
+  }
+  process.stdout.write(
+    "  " + ansi(opts.version, COL.text.dim) + "  " +
+    ansi("hyper-stack", COL.accent.secondary) + "\n\n",
+  );
 
   await typeLine("  > booting...", COL.text.dim, 8);
   await sleep(50);

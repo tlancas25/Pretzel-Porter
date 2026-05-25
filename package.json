@@ -1,6 +1,6 @@
 {
   "name": "pretzel-porter",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "Pretzel Porter — a local, private terminal agent that runs on any local LLM from Ollama, for working with sensitive files like a portfolio or personal finances without anything leaving your machine.",
   "type": "module",
   "bin": {
