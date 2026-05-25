@@ -15,7 +15,7 @@ import { HudStatus } from "./HudStatus.js";
 import { MessageView } from "./MessageView.js";
 import { LiveStream } from "./LiveStream.js";
 import { Input } from "../components/Input.js";
-import { ConfirmDialog } from "../components/ConfirmDialog.js";
+import { ConfirmDialog } from "./ConfirmDialog.js";
 
 type StaticEntry = ConvItem | { id: number; kind: "hud-header" };
 
